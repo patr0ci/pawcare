@@ -15,6 +15,8 @@ def env_bool(name: str, default: bool = False) -> bool:
 
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-only-insecure-key")
 DEBUG = env_bool("DJANGO_DEBUG", True)
+if not DEBUG and SECRET_KEY == "dev-only-insecure-key":
+    raise RuntimeError("Set DJANGO_SECRET_KEY in production.")
 ALLOWED_HOSTS = [h for h in os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if h]
 CSRF_TRUSTED_ORIGINS = [o for o in os.getenv("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",") if o]
 
@@ -53,6 +55,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "config.context_processors.demo",
             ],
         },
     },
@@ -87,6 +90,20 @@ STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_DIRS = [BASE_DIR / "static"]
 
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {
+        "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"
+        if DEBUG
+        else "whitenoise.storage.CompressedManifestStaticFilesStorage"
+    },
+}
+
+if not DEBUG:
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "home"
@@ -114,3 +131,6 @@ RAG_MAX_DISTANCE = float(os.getenv("RAG_MAX_DISTANCE", "0.42"))
 
 # Per-user cap on assistant messages per day, so a public demo can't run up the LLM bill.
 ASSISTANT_DAILY_MESSAGE_LIMIT = int(os.getenv("ASSISTANT_DAILY_MESSAGE_LIMIT", "30"))
+
+# Public demo only: let any logged-in visitor open the staff dashboard (it shows costs and eval results).
+DEMO_PUBLIC_DASHBOARD = env_bool("DEMO_PUBLIC_DASHBOARD", False)

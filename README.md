@@ -18,6 +18,11 @@ in a way the team can test, monitor and pay for predictably.
 - **Tools are scoped to the logged-in user.** The model never passes a user id, so it can't reach another client's data.
 - **Streams** the answer token by token (Server-Sent Events over a plain Django `StreamingHttpResponse`).
 - **Tracks cost.** Every reply stores model, prompt/completion tokens, USD cost and latency; each user has a daily message cap.
+- **Staff dashboard** (`/assistant/dashboard/`): answers, cost per answer, latency, tokens, cost by model and by user,
+  tool-call counts, proposed vs confirmed actions, and the latest evaluation run.
+- **Evaluation set** (`python manage.py run_evals`): 27 fixed questions — prices, policies, emergencies, out-of-scope
+  and "don't prescribe" cases — scored on required facts, the article cited, and refusals. Runs against the real
+  model, rolls back its own rows, and stores the result for the dashboard. Current score: **27/27 with DeepSeek V4.1 Flash, about $0.008 per full run**.
 - **Works with any OpenAI-compatible provider** — OpenRouter, OpenAI, DeepSeek, or a self-hosted model — by changing env vars.
   `LLM_PROVIDER=fake` runs everything offline.
 
@@ -64,6 +69,30 @@ uv run python manage.py runserver
 
 Open http://localhost:8000 and click **Try it** — you get a throwaway account with two pets.
 
+## What the evaluation caught
+
+The first run scored 24/27. Two of the failures were real problems, not test noise:
+
+- *"It's 11pm and my cat ate a lily"* — the answer said "go to an emergency vet" but left out the 24h ER's phone number.
+  The number was in the article, just in a paragraph that wasn't retrieved. Fix: **small-to-big retrieval** — match on
+  chunks, but give the model the whole (short) article.
+- *"What is the capital of France?"* — it answered "Paris". Fix: an explicit scope rule in the system prompt.
+
+A third failure was the test being too strict (the right fact, cited from a different article that also states it),
+so that case now accepts either article. I also tried hybrid (vector + full-text) search for it; it didn't change the
+ranking, so it was reverted rather than kept as unmeasured complexity.
+
+## Deploy
+
+```bash
+cp .env.example .env    # set DJANGO_SECRET_KEY, POSTGRES_PASSWORD, LLM_API_KEY
+DOMAIN=pawcare.example.com docker compose -f docker-compose.prod.yml up -d --build
+```
+
+Postgres + pgvector, the app (gunicorn with threaded workers so streams don't block), and Caddy with automatic HTTPS
+and response buffering off for SSE. The embedding model is baked into the image; first boot migrates, seeds and
+indexes the help center.
+
 ## Tests
 
 ```bash
@@ -79,8 +108,8 @@ proposals expire and can't be replayed, runaway tool loops are cut off, and stre
 
 - [x] RAG over the help center with citations, streaming, cost logging, daily limits
 - [x] Tool-calling agent: check availability, book / reschedule / cancel — with an explicit confirmation step before any write
-- [ ] Cost & usage dashboard for staff
-- [ ] Evaluation page: a fixed question set scored for answer accuracy and citation correctness
-- [ ] Docker image + Caddy deploy
+- [x] Cost & usage dashboard for staff
+- [x] Evaluation set scored for facts, citations and refusals, shown on the dashboard
+- [x] Docker image + Caddy deploy
 
 All clinic data, people and prices are fictional.

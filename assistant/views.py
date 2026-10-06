@@ -2,7 +2,10 @@ import json
 import logging
 
 from django.conf import settings
+from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.decorators import login_required
+from django.db.models import Avg, Count, Sum
+from django.db.models.functions import TruncDate
 from django.http import HttpResponseBadRequest, JsonResponse, StreamingHttpResponse
 from datetime import timedelta
 
@@ -13,7 +16,7 @@ from django.views.decorators.http import require_POST
 from clinic.services import BookingError
 
 from .chat import answer
-from .models import Conversation, Message, PendingAction
+from .models import Conversation, EvalRun, Message, PendingAction
 from .tools import execute
 
 ACTION_TTL = timedelta(minutes=30)
@@ -107,3 +110,50 @@ def dismiss_action(request, action_id):
     action.save(update_fields=["status", "result"])
     _log_outcome(action, action.result)
     return JsonResponse({"status": action.status, "message": action.result})
+
+
+def dashboard_allowed(user) -> bool:
+    return user.is_staff or (settings.DEMO_PUBLIC_DASHBOARD and user.is_authenticated)
+
+
+def dashboard(request):
+    """Staff view: what the assistant costs, how it's used, and how it scores on the eval set.
+    On the public demo (DEMO_PUBLIC_DASHBOARD) any logged-in visitor can see it."""
+    if not dashboard_allowed(request.user):
+        return staff_member_required(lambda r: None)(request)
+    since = timezone.now() - timedelta(days=30)
+    replies = Message.objects.filter(role=Message.Role.ASSISTANT, created_at__gte=since).exclude(model="")
+    totals = replies.aggregate(
+        answers=Count("id"),
+        cost=Sum("cost_usd"),
+        tokens_in=Sum("prompt_tokens"),
+        tokens_out=Sum("completion_tokens"),
+        latency=Avg("latency_ms"),
+    )
+    daily = list(
+        replies.annotate(day=TruncDate("created_at")).values("day").annotate(answers=Count("id"), cost=Sum("cost_usd")).order_by("day")
+    )
+    by_model = replies.values("model").annotate(answers=Count("id"), cost=Sum("cost_usd")).order_by("-answers")
+    top_users = (
+        replies.values("conversation__user__username").annotate(answers=Count("id"), cost=Sum("cost_usd")).order_by("-cost")[:10]
+    )
+    tools: dict[str, int] = {}
+    for trace in replies.exclude(tool_calls=[]).values_list("tool_calls", flat=True):
+        for call in trace:
+            tools[call["name"]] = tools.get(call["name"], 0) + 1
+    actions = PendingAction.objects.filter(created_at__gte=since).values("kind", "status").annotate(n=Count("id"))
+    peak = max((d["answers"] for d in daily), default=0)
+    return render(
+        request,
+        "assistant/dashboard.html",
+        {
+            "totals": totals,
+            "cost_per_answer": (totals["cost"] or 0) / totals["answers"] if totals["answers"] else 0,
+            "daily": [d | {"pct": round(100 * d["answers"] / peak) if peak else 0} for d in daily],
+            "by_model": by_model,
+            "top_users": top_users,
+            "tools": sorted(tools.items(), key=lambda t: -t[1]),
+            "actions": actions,
+            "eval_run": EvalRun.objects.first(),
+        },
+    )

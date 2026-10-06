@@ -15,6 +15,7 @@
       <a href="{% url 'helpcenter:index' %}">Help center</a>
       {% if user.is_authenticated %}
         <a href="{% url 'my_pets' %}">My pets</a>
+        {% if user.is_staff or demo_public_dashboard %}<a href="{% url 'assistant:dashboard' %}">Dashboard</a>{% endif %}
         <a href="{% url 'assistant:chat' %}" class="nav-cta">Assistant</a>
         <form method="post" action="{% url 'logout' %}" class="inline">{% csrf_token %}<button class="link">Log out</button></form>
       {% else %}

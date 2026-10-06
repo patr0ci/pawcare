@@ -42,18 +42,20 @@ def retrieve(query: str | list[str], k: int | None = None, max_distance: float |
                 seen.add(chunk.id)
                 ranked.append(chunk)
 
-    # One source per article (chunks merged in article order), ranked by its best chunk,
-    # so citations point to pages the user can open rather than to fragments.
-    by_article: dict[int, list[Chunk]] = {}
+    # Small-to-big: chunks are what we match on, but the model gets the whole (short) article, ranked by its
+    # best chunk. Key facts often sit in a paragraph that didn't match, e.g. the ER phone number next to
+    # the poison list. Citations then point to pages the user can open rather than to fragments.
+    articles: dict[int, Chunk] = {}
     for chunk in ranked:
-        by_article.setdefault(chunk.article_id, []).append(chunk)
+        articles.setdefault(chunk.article_id, chunk)
     return [
         Source(
             number=i,
-            title=group[0].article.title,
-            url=group[0].article.get_absolute_url(),
-            text="\n\n".join(c.text for c in sorted(group, key=lambda c: c.position)),
-            distance=float(group[0].distance),
+            title=chunk.article.title,
+            url=chunk.article.get_absolute_url(),
+            text=f"{chunk.article.title}\n\n{chunk.article.body}",
+            distance=float(chunk.distance),
         )
-        for i, group in enumerate(by_article.values(), start=1)
+        for i, chunk in enumerate(articles.values(), start=1)
     ]
+

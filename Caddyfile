@@ -1,0 +1,7 @@
+{$DOMAIN} {
+	encode gzip
+	reverse_proxy web:8000 {
+		# Stream assistant answers immediately instead of buffering them.
+		flush_interval -1
+	}
+}

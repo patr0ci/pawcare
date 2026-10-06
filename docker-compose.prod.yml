@@ -1,0 +1,45 @@
+# Production: Postgres + app + Caddy (automatic HTTPS). Usage:
+#   DOMAIN=pawcare.example.com docker compose -f docker-compose.prod.yml up -d --build
+services:
+  db:
+    image: pgvector/pgvector:pg17-trixie
+    environment:
+      POSTGRES_DB: pawcare
+      POSTGRES_USER: pawcare
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pawcare"]
+      interval: 5s
+      retries: 10
+    restart: unless-stopped
+
+  web:
+    build: .
+    env_file: .env
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+      DJANGO_DEBUG: "false"
+      DJANGO_ALLOWED_HOSTS: ${DOMAIN:?set DOMAIN}
+      DJANGO_CSRF_TRUSTED_ORIGINS: https://${DOMAIN}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2
+    ports: ["80:80", "443:443"]
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    depends_on: [web]
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  caddy_data:

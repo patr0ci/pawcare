@@ -71,3 +71,21 @@ class PendingAction(models.Model):
 
     def __str__(self):
         return f"{self.kind}: {self.summary} [{self.status}]"
+
+
+class EvalRun(models.Model):
+    """One run of the fixed evaluation set against the configured model."""
+
+    model = models.CharField(max_length=120)
+    created_at = models.DateTimeField(auto_now_add=True)
+    total = models.PositiveIntegerField(default=0)
+    passed = models.PositiveIntegerField(default=0)
+    cost_usd = models.DecimalField(max_digits=10, decimal_places=6, default=0)
+    results = models.JSONField(default=list)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    @property
+    def score(self) -> float:
+        return self.passed / self.total if self.total else 0.0

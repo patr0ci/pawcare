@@ -73,3 +73,21 @@ button { font: inherit; cursor: pointer; }
 .action-buttons { display: flex; gap: 1rem; align-items: center; }
 .action.dismissed, .action.failed { border-color: var(--line); background: transparent; }
 .action.dismissed .action-title, .action.failed .action-title { color: var(--muted); }
+
+/* dashboard */
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .8rem; margin: 1rem 0 2rem; }
+.stats div { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: .8rem 1rem; display: flex; flex-direction: column; }
+.stat { font-size: 1.35rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.label { color: var(--muted); font-size: .8rem; }
+.bars { display: flex; flex-direction: column; gap: .3rem; }
+.bar-row { display: grid; grid-template-columns: 4rem 1fr 7rem; gap: .6rem; align-items: center; }
+.bar { background: var(--accent-soft); border-radius: 4px; height: .7rem; }
+.bar div { background: var(--accent); height: 100%; border-radius: 4px; }
+.grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 0 2rem; }
+table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+th, td { text-align: left; padding: .4rem .5rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: 500; }
+.evals { display: block; overflow-x: auto; }
+.evals tr.fail td:first-child { color: #c0392b; font-weight: 700; }
+.evals tr.pass td:first-child { color: var(--accent); }
+.fail-reason { color: #c0392b; }

@@ -70,7 +70,7 @@ def test_follow_up_questions_reuse_previous_question_for_retrieval(articles, tut
 
 
 @pytest.mark.django_db
-def test_chunks_of_the_same_article_become_one_source(db):
+def test_a_matching_chunk_brings_its_whole_article(db):
     from helpcenter.ingest import index_article
     from helpcenter.models import Article
 
@@ -78,7 +78,7 @@ def test_chunks_of_the_same_article_become_one_source(db):
     index_article(Article.objects.create(slug="rabies", title="Rabies", category="Vaccines", body=body))
     sources = retrieve("rabies vaccine fact", max_distance=2)
     assert len(sources) == 1
-    assert sources[0].text.count("Rabies vaccine fact number") == 3
+    assert sources[0].text.count("Rabies vaccine fact number") == 3  # all paragraphs, matched or not
 
 
 @pytest.mark.django_db

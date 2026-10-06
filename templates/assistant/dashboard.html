@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Assistant dashboard{% endblock %}
+{% block content %}
+<p class="eyebrow">Staff · last 30 days</p>
+<h1>Assistant dashboard</h1>
+
+<div class="stats">
+  <div><span class="stat">{{ totals.answers|default:0 }}</span><span class="label">answers</span></div>
+  <div><span class="stat">${{ totals.cost|default:0|floatformat:4 }}</span><span class="label">LLM cost</span></div>
+  <div><span class="stat">${{ cost_per_answer|floatformat:5 }}</span><span class="label">per answer</span></div>
+  <div><span class="stat">{{ totals.latency|default:0|floatformat:0 }} ms</span><span class="label">avg latency</span></div>
+  <div><span class="stat">{{ totals.tokens_in|default:0 }} / {{ totals.tokens_out|default:0 }}</span><span class="label">tokens in / out</span></div>
+</div>
+
+<h2>Answers per day</h2>
+{% if daily %}
+<div class="bars">
+  {% for d in daily %}
+    <div class="bar-row"><span class="muted small">{{ d.day|date:"M j" }}</span><div class="bar"><div style="width: {{ d.pct }}%"></div></div><span class="small">{{ d.answers }} · ${{ d.cost|floatformat:4 }}</span></div>
+  {% endfor %}
+</div>
+{% else %}<p class="muted">No answers yet.</p>{% endif %}
+
+<div class="grid-2">
+  <section>
+    <h2>By model</h2>
+    <table><tr><th>Model</th><th>Answers</th><th>Cost</th></tr>
+      {% for m in by_model %}<tr><td>{{ m.model }}</td><td>{{ m.answers }}</td><td>${{ m.cost|floatformat:4 }}</td></tr>{% endfor %}
+    </table>
+  </section>
+  <section>
+    <h2>Top users by cost</h2>
+    <table><tr><th>User</th><th>Answers</th><th>Cost</th></tr>
+      {% for u in top_users %}<tr><td>{{ u.conversation__user__username }}</td><td>{{ u.answers }}</td><td>${{ u.cost|floatformat:4 }}</td></tr>{% endfor %}
+    </table>
+  </section>
+  <section>
+    <h2>Tool calls</h2>
+    <table><tr><th>Tool</th><th>Calls</th></tr>
+      {% for name, n in tools %}<tr><td><code>{{ name }}</code></td><td>{{ n }}</td></tr>{% empty %}<tr><td colspan="2" class="muted">None yet</td></tr>{% endfor %}
+    </table>
+  </section>
+  <section>
+    <h2>Proposed actions</h2>
+    <table><tr><th>Kind</th><th>Status</th><th>#</th></tr>
+      {% for a in actions %}<tr><td>{{ a.kind }}</td><td>{{ a.status }}</td><td>{{ a.n }}</td></tr>{% empty %}<tr><td colspan="3" class="muted">None yet</td></tr>{% endfor %}
+    </table>
+  </section>
+</div>
+
+<h2>Evaluation</h2>
+{% if eval_run %}
+  <p><strong>{{ eval_run.passed }}/{{ eval_run.total }}</strong> passed ({% widthratio eval_run.passed eval_run.total 100 %}%) ·
+     {{ eval_run.model }} · ${{ eval_run.cost_usd|floatformat:4 }} · {{ eval_run.created_at|date:"M j, H:i" }}</p>
+  <table class="evals">
+    <tr><th></th><th>Question</th><th>Answer</th><th>Cited</th></tr>
+    {% for r in eval_run.results %}
+      <tr class="{% if r.failures %}fail{% else %}pass{% endif %}">
+        <td>{% if r.failures %}✗{% else %}✓{% endif %}</td>
+        <td>{{ r.question }}{% if r.failures %}<div class="small fail-reason">{{ r.failures|join:"; " }}</div>{% endif %}</td>
+        <td class="small">{{ r.answer|truncatechars:220 }}</td>
+        <td class="small">{{ r.cited|join:", " }}</td>
+      </tr>
+    {% endfor %}
+  </table>
+{% else %}
+  <p class="muted">No evaluation yet. Run <code>python manage.py run_evals</code>.</p>
+{% endif %}
+{% endblock %}
