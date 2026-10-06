@@ -4,7 +4,11 @@
 <h1>Log in</h1>
 <form method="post" class="stack">{% csrf_token %}
   {{ form.as_p }}
+  <input type="hidden" name="next" value="{{ next }}">
   <button class="button">Log in</button>
 </form>
-<p class="muted">Just looking? <form method="post" action="{% url 'demo_login' %}" class="inline">{% csrf_token %}<button class="link">Use a demo account</button></form></p>
+<form method="post" action="{% url 'demo_login' %}" class="demo-alt">{% csrf_token %}
+  <input type="hidden" name="next" value="{{ next }}">
+  <span class="muted">Just looking?</span> <button class="link">Use a demo account</button>
+</form>
 {% endblock %}

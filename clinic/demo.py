@@ -14,6 +14,14 @@ VETS = [
     ("Dr. Lena Ortiz", "Exotics", ["rabbit", "bird", "cat"]),
 ]
 
+GENERAL = ["Wellness exam", "Vaccination visit", "Nail trim"]
+SURGICAL = ["Dental cleaning", "Spay/neuter (cat)", "Spay/neuter (dog under 20 kg)", "Spay/neuter (dog 20 kg+)"]
+VET_SERVICES = {
+    "Dr. Maya Chen": GENERAL,
+    "Dr. Rafael Souza": SURGICAL,
+    "Dr. Lena Ortiz": GENERAL,
+}
+
 SERVICES = [
     ("Wellness exam", 30, "65.00"),
     ("Vaccination visit", 30, "45.00"),
@@ -32,6 +40,8 @@ def seed_clinic() -> None:
         Service.objects.update_or_create(
             name=name, defaults={"duration_minutes": minutes, "price_usd": Decimal(price)}
         )
+    for vet_name, service_names in VET_SERVICES.items():
+        Vet.objects.get(name=vet_name).services.set(Service.objects.filter(name__in=service_names))
 
 
 def create_demo_tutor() -> Tutor:

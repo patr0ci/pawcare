@@ -137,3 +137,8 @@ DEMO_ACCOUNTS_PER_DAY = int(os.getenv("DEMO_ACCOUNTS_PER_DAY", "300"))
 
 # Public demo only: let any logged-in visitor open the staff dashboard (it shows costs and eval results).
 DEMO_PUBLIC_DASHBOARD = env_bool("DEMO_PUBLIC_DASHBOARD", False)
+
+# A non-default admin path keeps it out of reach of drive-by login scanners on the public demo.
+ADMIN_URL = os.getenv("DJANGO_ADMIN_URL", "admin/")
+if not ADMIN_URL.endswith("/"):
+    ADMIN_URL += "/"

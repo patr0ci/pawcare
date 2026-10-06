@@ -5,7 +5,10 @@ from django.utils import timezone
 
 
 class Conversation(models.Model):
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="conversations")
+    # SET_NULL: deleting an account (e.g. demo cleanup) keeps the cost and audit history.
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name="conversations"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -67,9 +70,11 @@ class PendingAction(models.Model):
     conversation = models.ForeignKey(Conversation, on_delete=models.CASCADE, related_name="actions")
     kind = models.CharField(max_length=12, choices=Kind.choices)
     payload = models.JSONField()
-    summary = models.CharField(max_length=300)
+    SUMMARY_MAX = RESULT_MAX = 500
+
+    summary = models.CharField(max_length=SUMMARY_MAX)
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING)
-    result = models.CharField(max_length=300, blank=True)
+    result = models.CharField(max_length=RESULT_MAX, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

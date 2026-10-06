@@ -74,9 +74,12 @@ async function send(question) {
   let sources = [];
   try {
     const response = await fetch(form.action, { method: "POST", body: payload });
-    if (!response.ok) {
+    const isStream = (response.headers.get("Content-Type") || "").startsWith("text/event-stream");
+    if (!response.ok || !isStream) {
       const data = await response.json().catch(() => ({}));
-      text.textContent = data.error || "Something went wrong.";
+      text.textContent =
+        data.error ||
+        (response.redirected ? "Your session has ended. Reload the page to start a new demo." : "Something went wrong.");
       return;
     }
     const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
@@ -101,6 +104,8 @@ async function send(question) {
           meta.className = "meta";
           meta.textContent = `$${event.cost_usd.toFixed(5)}`;
           reply.append(meta);
+          const left = document.getElementById("remaining");
+          if (left && event.remaining !== undefined) left.textContent = event.remaining;
         }
       }
     }

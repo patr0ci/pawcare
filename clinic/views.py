@@ -3,6 +3,7 @@ from django.contrib.auth import get_user_model, login
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import redirect, render
 from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from .demo import create_demo_tutor
@@ -22,6 +23,9 @@ def demo_login(request):
         return render(request, "clinic/home.html", {"demo_full": True}, status=429)
     tutor = create_demo_tutor()
     login(request, tutor.user, backend="django.contrib.auth.backends.ModelBackend")
+    next_url = request.POST.get("next", "")
+    if next_url and url_has_allowed_host_and_scheme(next_url, {request.get_host()}, request.is_secure()):
+        return redirect(next_url)
     return redirect("assistant:chat")
 
 

@@ -51,7 +51,7 @@ class OpenAICompatibleLLM:
     def __init__(self, base_url: str, api_key: str, model: str):
         from openai import OpenAI
 
-        self.client = OpenAI(base_url=base_url, api_key=api_key, timeout=60, max_retries=2)
+        self.client = OpenAI(base_url=base_url, api_key=api_key, timeout=45, max_retries=1)
         self.model = model
 
     def stream(self, messages: list[dict], tools: list[dict] | None = None) -> Iterator[Event]:

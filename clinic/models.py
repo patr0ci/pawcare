@@ -50,6 +50,7 @@ class Vet(models.Model):
     name = models.CharField(max_length=120)
     specialty = models.CharField(max_length=120, blank=True)
     treats = models.JSONField(default=list, help_text="Species codes this vet sees, e.g. ['dog', 'cat'].")
+    services = models.ManyToManyField("Service", blank=True, related_name="vets", help_text="Services this vet performs.")
 
     def __str__(self):
         return self.name
@@ -99,8 +100,9 @@ class Appointment(models.Model):
         return self.starts_at + timedelta(minutes=self.service.duration_minutes)
 
 
-def available_slots(service: Service, vet: Vet, day) -> list[datetime]:
-    """Start times on `day` where `vet` is free for the whole duration of `service`."""
+def available_slots(service: Service, vet: Vet, day, pet: Pet | None = None, ignore: Appointment | None = None) -> list[datetime]:
+    """Start times on `day` where `vet` (and `pet`, if given) is free for the whole duration of `service`.
+    `ignore` leaves one appointment out, so an appointment being rescheduled doesn't block itself."""
     hours = OPENING_HOURS.get(day.weekday())
     if not hours:
         return []
@@ -108,10 +110,11 @@ def available_slots(service: Service, vet: Vet, day) -> list[datetime]:
     opens = datetime.combine(day, hours[0], tzinfo=tz)
     closes = datetime.combine(day, hours[1], tzinfo=tz)
     duration = timedelta(minutes=service.duration_minutes)
-    busy = [
-        (a.starts_at, a.ends_at)
-        for a in Appointment.objects.active().filter(vet=vet, starts_at__date=day).select_related("service")
-    ]
+    who = models.Q(vet=vet) | models.Q(pet=pet) if pet else models.Q(vet=vet)
+    taken = Appointment.objects.active().filter(who, starts_at__date=day).select_related("service")
+    if ignore is not None:
+        taken = taken.exclude(id=ignore.id)
+    busy = [(a.starts_at, a.ends_at) for a in taken]
     now = timezone.now()
     slots = []
     start = opens

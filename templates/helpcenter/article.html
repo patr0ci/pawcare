@@ -4,6 +4,6 @@
 <p class="eyebrow"><a href="{% url 'helpcenter:index' %}">Help center</a> · {{ article.category }}</p>
 <h1>{{ article.title }}</h1>
 <div class="prose">
-  {% for paragraph in paragraphs %}<p>{{ paragraph|linebreaksbr }}</p>{% endfor %}
+  {% for block in blocks %}{{ block }}{% endfor %}
 </div>
 {% endblock %}

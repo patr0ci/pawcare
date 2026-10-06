@@ -4,13 +4,15 @@ import logging
 from django.conf import settings
 from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.decorators import login_required
+from django.db import transaction
 from django.db.models import Avg, Count, Sum
 from django.db.models.functions import TruncDate
 from django.http import JsonResponse, StreamingHttpResponse
 from datetime import timedelta
 
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+from django.utils.text import Truncator
 from django.views.decorators.http import require_POST
 
 from clinic.services import BookingError
@@ -33,17 +35,28 @@ def current_conversation(request) -> Conversation:
     return conversation
 
 
+def timeline(conversation: Conversation) -> list[dict]:
+    """Messages and action cards in the order they happened, so a reload looks like the live chat."""
+    messages = list(conversation.messages.all())
+    items = [{"kind": "message", "at": m.created_at, "obj": m} for m in messages]
+    for action in conversation.actions.all():
+        # A card belongs under the reply of the turn that proposed it (the reply is saved when the turn ends).
+        reply = next((m for m in messages if m.role == Message.Role.ASSISTANT and m.created_at >= action.created_at), None)
+        items.append({"kind": "action", "at": reply.created_at if reply else action.created_at, "obj": action})
+    return sorted(items, key=lambda i: (i["at"], i["kind"] == "action"))
+
+
 @login_required
 def chat(request):
     if request.GET.get("new"):
         request.session.pop("conversation_id", None)
+        return redirect("assistant:chat")  # so a reload doesn't start yet another conversation
     conversation = current_conversation(request)
     return render(
         request,
         "assistant/chat.html",
         {
-            "messages_": conversation.messages.all(),
-            "pending": conversation.actions.filter(status=PendingAction.Status.PENDING),
+            "timeline": timeline(conversation),
             "remaining": settings.ASSISTANT_DAILY_MESSAGE_LIMIT - Message.objects.today_for(request.user).count(),
         },
     )
@@ -77,40 +90,53 @@ def send_message(request):
     return response
 
 
-def _own_pending_action(request, action_id) -> PendingAction:
+def _lock_pending_action(request, action_id) -> PendingAction:
+    """Row-locked, so two tabs (or a double click) can't both act on the same proposal. Call inside a transaction."""
     return get_object_or_404(
-        PendingAction, id=action_id, conversation__user=request.user, status=PendingAction.Status.PENDING
+        PendingAction.objects.select_for_update(),
+        id=action_id,
+        conversation__user=request.user,
+        status=PendingAction.Status.PENDING,
     )
 
 
-def _log_outcome(action: PendingAction, text: str):
+def _log_outcome(action: PendingAction):
     # Recorded as an assistant turn so the model sees what actually happened in later questions.
-    Message.objects.create(conversation=action.conversation, role=Message.Role.ASSISTANT, content=text)
+    Message.objects.create(conversation=action.conversation, role=Message.Role.ASSISTANT, content=action.result)
 
 
 @login_required
 @require_POST
 def confirm_action(request, action_id):
-    action = _own_pending_action(request, action_id)
-    if timezone.now() - action.created_at > ACTION_TTL:
-        action.status, action.result = PendingAction.Status.FAILED, "Expired. Please ask again."
-    else:
-        try:
-            action.status, action.result = PendingAction.Status.CONFIRMED, execute(action)
-        except BookingError as exc:
-            action.status, action.result = PendingAction.Status.FAILED, f"Couldn't do that: {exc}"
-    action.save(update_fields=["status", "result"])
-    _log_outcome(action, action.result)
+    with transaction.atomic():
+        action = _lock_pending_action(request, action_id)
+        if timezone.now() - action.created_at > ACTION_TTL:
+            action.status, action.result = PendingAction.Status.FAILED, "That proposal expired. Please ask again."
+        else:
+            try:
+                with transaction.atomic():
+                    outcome = execute(action)
+                action.status, action.result = PendingAction.Status.CONFIRMED, outcome
+            except BookingError as exc:
+                action.status, action.result = PendingAction.Status.FAILED, f"Couldn't do that: {exc}"
+            except Exception:
+                logger.exception("Confirming action %s failed", action.id)
+                action.status = PendingAction.Status.FAILED
+                action.result = "Something changed since this was proposed. Please ask the assistant again."
+        action.result = Truncator(action.result).chars(PendingAction.RESULT_MAX)
+        action.save(update_fields=["status", "result"])
+        _log_outcome(action)
     return JsonResponse({"status": action.status, "message": action.result})
 
 
 @login_required
 @require_POST
 def dismiss_action(request, action_id):
-    action = _own_pending_action(request, action_id)
-    action.status, action.result = PendingAction.Status.DISMISSED, "Okay, I didn't change anything."
-    action.save(update_fields=["status", "result"])
-    _log_outcome(action, action.result)
+    with transaction.atomic():
+        action = _lock_pending_action(request, action_id)
+        action.status, action.result = PendingAction.Status.DISMISSED, "Okay, I didn't change anything."
+        action.save(update_fields=["status", "result"])
+        _log_outcome(action)
     return JsonResponse({"status": action.status, "message": action.result})
 
 
@@ -143,6 +169,9 @@ def dashboard(request):
     for trace in replies.exclude(tool_calls=[]).values_list("tool_calls", flat=True):
         for call in trace:
             tools[call["name"]] = tools.get(call["name"], 0) + 1
+    if not request.user.is_staff:
+        # Public demo viewers see the numbers, not other visitors' account names.
+        top_users = [u | {"conversation__user__username": f"visitor {i}"} for i, u in enumerate(top_users, 1)]
     actions = PendingAction.objects.filter(created_at__gte=since).values("kind", "status").annotate(n=Count("id"))
     peak = max((d["answers"] for d in daily), default=0)
     return render(

@@ -3,6 +3,7 @@ from itertools import groupby
 from django.shortcuts import get_object_or_404, render
 
 from .models import Article
+from .rendering import render_body
 
 
 def index(request):
@@ -13,5 +14,5 @@ def index(request):
 
 def article(request, slug):
     article = get_object_or_404(Article, slug=slug)
-    paragraphs = [p.strip() for p in article.body.split("\n\n") if p.strip()]
-    return render(request, "helpcenter/article.html", {"article": article, "paragraphs": paragraphs})
+    links = {a.title: a.get_absolute_url() for a in Article.objects.exclude(id=article.id)}
+    return render(request, "helpcenter/article.html", {"article": article, "blocks": render_body(article.body, links)})

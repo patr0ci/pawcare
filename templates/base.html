@@ -19,6 +19,7 @@
         <a href="{% url 'assistant:chat' %}" class="nav-cta">Assistant</a>
         <form method="post" action="{% url 'logout' %}" class="inline">{% csrf_token %}<button class="link">Log out</button></form>
       {% else %}
+        <a href="{% url 'login' %}">Log in</a>
         <form method="post" action="{% url 'demo_login' %}" class="inline">{% csrf_token %}<button class="nav-cta">Try the assistant</button></form>
       {% endif %}
     </nav>

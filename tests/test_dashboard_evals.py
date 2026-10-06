@@ -15,6 +15,7 @@ def test_score_case_checks():
     assert score_case({"must_cite": ["a", "b"]}, "x", ["b"]) == []
     assert score_case({"must_refuse": True}, "Paris.", []) == ["should have said it doesn't know"]
     assert score_case({"must_refuse": True}, "I don't know, please call us.", []) == []
+    assert score_case({"must_refuse": True}, "Grooming isn't among the services we offer.", []) == []
     assert score_case({"must_not_include": ["mg"]}, "Give 50 mg.", []) == ["should not say “mg”"]
 
 

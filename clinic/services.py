@@ -15,54 +15,62 @@ class BookingError(Exception):
     """A rule was broken. The message is safe to show to the user."""
 
 
-def vets_for(pet: Pet) -> list[Vet]:
-    return [vet for vet in Vet.objects.all() if pet.species in vet.treats]
+def vets_for(pet: Pet, service: Service) -> list[Vet]:
+    """Vets who see the pet's species and perform the service."""
+    return [vet for vet in service.vets.order_by("name") if pet.species in vet.treats]
 
 
-def own_pet(tutor: Tutor, pet_id: int) -> Pet:
+def own_pet(tutor: Tutor, pet_id: int, lock: bool = False) -> Pet:
+    pets = tutor.pets.select_for_update() if lock else tutor.pets
     try:
-        return tutor.pets.get(id=pet_id)
+        return pets.get(id=pet_id)
     except Pet.DoesNotExist:
         raise BookingError("That pet isn't on your account. Call list_my_pets for the right id.") from None
 
 
-def own_appointment(tutor: Tutor, appointment_id: int) -> Appointment:
+def own_appointment(tutor: Tutor, appointment_id: int, lock: bool = False) -> Appointment:
+    """An upcoming, not-yet-completed appointment of this tutor. Past and completed visits are history: they can't
+    be moved or cancelled from here."""
+    appointments = Appointment.objects.active().exclude(status=Appointment.Status.COMPLETED)
+    if lock:
+        appointments = appointments.select_for_update(of=("self",))
     try:
-        return Appointment.objects.active().select_related("pet", "vet", "service").get(
-            id=appointment_id, pet__tutor=tutor
-        )
+        appointment = appointments.select_related("pet", "vet", "service").get(id=appointment_id, pet__tutor=tutor)
     except Appointment.DoesNotExist:
         raise BookingError(
-            "That appointment isn't on your account or was already cancelled. "
+            "That appointment isn't on your account, already happened, or was cancelled. "
             "Call list_my_appointments for the right id."
         ) from None
+    if appointment.starts_at <= timezone.now():
+        raise BookingError("That appointment has already started or happened, so it can't be changed here.")
+    return appointment
 
 
 def find_slots(pet: Pet, service: Service, day) -> list[tuple[Vet, datetime]]:
-    """Every free start time that day, across vets who treat the pet's species (a day has at most ~18 per vet)."""
-    slots = [(vet, start) for vet in vets_for(pet) for start in available_slots(service, vet, day)]
+    """Every free start time that day, across vets who can see this pet for this service."""
+    slots = [(vet, start) for vet in vets_for(pet, service) for start in available_slots(service, vet, day, pet=pet)]
     return sorted(slots, key=lambda s: (s[1], s[0].name))
 
 
-def _check_slot(pet: Pet, vet: Vet, service: Service, starts_at: datetime, ignore: Appointment | None = None):
+def check_slot(pet: Pet, vet: Vet, service: Service, starts_at: datetime, ignore: Appointment | None = None):
     if pet.species not in vet.treats:
         raise BookingError(f"{vet} doesn't see {pet.get_species_display().lower()}s.")
+    if not vet.services.filter(id=service.id).exists():
+        raise BookingError(f"{vet} doesn't do {service.name.lower()}.")
     if starts_at <= timezone.now():
         raise BookingError("That time is in the past.")
-    if ignore is not None:
-        # Rescheduling: the appointment's own current slot shouldn't block itself.
-        ignore.status = Appointment.Status.CANCELLED
-        ignore.save(update_fields=["status"])
-    if starts_at not in available_slots(service, vet, timezone.localtime(starts_at).date()):
-        raise BookingError("That time is no longer available.")
+    day = timezone.localtime(starts_at).date()
+    if starts_at not in available_slots(service, vet, day, pet=pet, ignore=ignore):
+        raise BookingError("That time is no longer available (the vet or the pet is already booked).")
 
 
 @transaction.atomic
 def book(tutor: Tutor, pet_id: int, service_id: int, vet_id: int, starts_at: datetime) -> Appointment:
-    pet = own_pet(tutor, pet_id)
+    # Lock the vet and the pet, in that order everywhere, so concurrent bookings for either are serialised.
+    vet = Vet.objects.select_for_update().get(id=vet_id)
+    pet = own_pet(tutor, pet_id, lock=True)
     service = Service.objects.get(id=service_id)
-    vet = Vet.objects.select_for_update().get(id=vet_id)  # serialises concurrent bookings per vet
-    _check_slot(pet, vet, service, starts_at)
+    check_slot(pet, vet, service, starts_at)
     return Appointment.objects.create(pet=pet, vet=vet, service=service, starts_at=starts_at)
 
 
@@ -70,17 +78,17 @@ def book(tutor: Tutor, pet_id: int, service_id: int, vet_id: int, starts_at: dat
 def reschedule(tutor: Tutor, appointment_id: int, starts_at: datetime) -> Appointment:
     appointment = own_appointment(tutor, appointment_id)
     Vet.objects.select_for_update().get(id=appointment.vet_id)
-    original_status = appointment.status
-    _check_slot(appointment.pet, appointment.vet, appointment.service, starts_at, ignore=appointment)
+    own_pet(tutor, appointment.pet_id, lock=True)
+    appointment = own_appointment(tutor, appointment_id, lock=True)  # re-read under the locks
+    check_slot(appointment.pet, appointment.vet, appointment.service, starts_at, ignore=appointment)
     appointment.starts_at = starts_at
-    appointment.status = original_status
-    appointment.save(update_fields=["starts_at", "status"])
+    appointment.save(update_fields=["starts_at"])
     return appointment
 
 
 @transaction.atomic
 def cancel(tutor: Tutor, appointment_id: int, reason: str = "") -> Appointment:
-    appointment = own_appointment(tutor, appointment_id)
+    appointment = own_appointment(tutor, appointment_id, lock=True)
     appointment.status = Appointment.Status.CANCELLED
     appointment.cancellation_reason = reason[:255]
     appointment.save(update_fields=["status", "cancellation_reason"])
@@ -88,4 +96,5 @@ def cancel(tutor: Tutor, appointment_id: int, reason: str = "") -> Appointment:
 
 
 def late_change_fee(appointment: Appointment) -> int:
-    return LATE_CHANGE_FEE_USD if appointment.starts_at - timezone.now() < LATE_CHANGE_WINDOW else 0
+    until = appointment.starts_at - timezone.now()
+    return LATE_CHANGE_FEE_USD if timedelta(0) < until < LATE_CHANGE_WINDOW else 0

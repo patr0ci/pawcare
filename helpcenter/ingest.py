@@ -1,5 +1,7 @@
 """Load help-center markdown files into Article rows and (re)build their embedded chunks."""
 
+import logging
+
 from pathlib import Path
 
 from django.db import transaction
@@ -10,6 +12,7 @@ from .chunking import split_into_chunks
 from .models import Article, Chunk
 
 CONTENT_DIR = Path(__file__).parent / "content"
+logger = logging.getLogger(__name__)
 
 
 def parse_markdown(path: Path) -> dict:
@@ -43,12 +46,18 @@ def index_article(article: Article) -> int:
 def ingest_directory(directory: Path = CONTENT_DIR) -> dict:
     """Sync the database with the markdown files: new/edited articles are (re)embedded, unchanged ones are
     skipped, and articles whose file is gone are deleted. Safe to run on every deploy."""
-    stats = {"created": 0, "updated": 0, "unchanged": 0, "deleted": 0, "chunks": 0}
+    stats = {"created": 0, "updated": 0, "unchanged": 0, "deleted": 0, "chunks": 0, "errors": 0}
     slugs = []
     for path in sorted(directory.glob("*.md")):
-        data = parse_markdown(path)
+        slugs.append(path.stem)  # a broken file keeps its existing article instead of deleting it
+        try:
+            data = parse_markdown(path)
+        except ValueError:
+            # One bad file must not stop a deploy (the entrypoint would crash-loop); skip it loudly.
+            logger.exception("Skipping help-center file")
+            stats["errors"] += 1
+            continue
         slug = data.pop("slug")
-        slugs.append(slug)
         article = Article.objects.filter(slug=slug).first()
         if article and all(getattr(article, k) == v for k, v in data.items()) and article.chunks.exists():
             stats["unchanged"] += 1

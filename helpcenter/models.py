@@ -1,7 +1,7 @@
 from django.conf import settings
 from django.db import models
 from django.urls import reverse
-from pgvector.django import HnswIndex, VectorField
+from pgvector.django import VectorField
 
 
 class Article(models.Model):
@@ -31,15 +31,9 @@ class Chunk(models.Model):
 
     class Meta:
         ordering = ["article", "position"]
-        indexes = [
-            HnswIndex(
-                name="chunk_embedding_hnsw",
-                fields=["embedding"],
-                m=16,
-                ef_construction=64,
-                opclasses=["vector_cosine_ops"],
-            )
-        ]
+        # No ANN (HNSW) index on purpose: a help center is a few hundred chunks, where an exact scan takes
+        # milliseconds and is always correct. With HNSW, rows deleted by a re-ingest (not yet vacuumed) can fill
+        # the candidate list and make a search come back empty. Add one past ~10k chunks, with iterative scans.
 
     def __str__(self):
         return f"{self.article.slug}#{self.position}"

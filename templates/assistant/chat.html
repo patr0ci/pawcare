@@ -11,14 +11,22 @@
   <a class="link" href="?new=1">New conversation</a>
 </div>
 <div id="log" class="log" aria-live="polite">
-  {% for m in messages_ %}
-    <div class="bubble {{ m.role }}">
-      <div class="text">{{ m.content }}</div>
-      {% if m.role == "assistant" %}
-        {% if m.sources %}<div class="sources">{% for s in m.sources %}<a href="{{ s.url }}" target="_blank">[{{ s.number }}] {{ s.title }}</a>{% endfor %}</div>{% endif %}
-        <div class="meta">{{ m.model }} · {{ m.prompt_tokens|add:m.completion_tokens }} tokens · ${{ m.cost_usd|floatformat:5 }} · {{ m.latency_ms }} ms</div>
+  {% for item in timeline %}
+    {% if item.kind == "message" %}{% with m=item.obj %}
+      <div class="bubble {{ m.role }}">
+        <div class="text">{{ m.content }}</div>
+        {% if m.role == "assistant" and m.model %}
+          {% if m.sources %}<div class="sources">{% for s in m.sources %}<a href="{{ s.url }}" target="_blank">[{{ s.number }}] {{ s.title }}</a>{% endfor %}</div>{% endif %}
+          <div class="meta">{{ m.model }} · {{ m.prompt_tokens|add:m.completion_tokens }} tokens · ${{ m.cost_usd|floatformat:5 }} · {{ m.latency_ms }} ms</div>
+        {% endif %}
+      </div>
+    {% endwith %}{% else %}{% with a=item.obj %}
+      {% if a.status == "pending" %}
+        <div data-action='{"id": {{ a.id }}, "summary": "{{ a.summary|escapejs }}"}'></div>
+      {% else %}
+        <div class="action {{ a.status }}"><div class="action-title">{% if a.status == "confirmed" %}Done{% else %}No changes{% endif %}</div><div class="action-summary">{{ a.summary }}</div></div>
       {% endif %}
-    </div>
+    {% endwith %}{% endif %}
   {% empty %}
     <div class="empty">
       <p>Try one of these:</p>
@@ -30,15 +38,12 @@
       <button class="chip">What appointments do I have coming up?</button>
     </div>
   {% endfor %}
-  {% for a in pending %}
-    <div data-action='{"id": {{ a.id }}, "summary": "{{ a.summary|escapejs }}"}'></div>
-  {% endfor %}
 </div>
 <form id="composer" class="composer" method="post" action="{% url 'assistant:send_message' %}">
   {% csrf_token %}
   <input name="message" id="message" maxlength="1000" autocomplete="off" placeholder="Ask about prices, vaccines, surgery prep…" required>
   <button class="button" type="submit">Send</button>
 </form>
-<p class="muted small">{{ remaining }} messages left today in this demo.</p>
+<p class="muted small"><span id="remaining">{{ remaining }}</span> messages left today in this demo.</p>
 {% endblock %}
 {% block scripts %}<script src="{% static 'js/chat.js' %}"></script>{% endblock %}

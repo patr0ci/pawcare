@@ -7,6 +7,7 @@ import json
 from datetime import date, datetime
 
 from django.utils import timezone
+from django.utils.text import Truncator
 
 from clinic import services
 from clinic.models import Appointment, Service, Vet
@@ -144,7 +145,7 @@ class ToolRunner:
             return handler(**json.loads(arguments or "{}"))
         except BookingError as exc:
             return {"error": str(exc)}
-        except (TypeError, ValueError, KeyError, Service.DoesNotExist, Vet.DoesNotExist) as exc:
+        except (TypeError, ValueError, KeyError, OverflowError, Service.DoesNotExist, Vet.DoesNotExist) as exc:
             return {"error": f"Invalid arguments: {exc}"}
 
     # --- reads ---------------------------------------------------------------
@@ -197,7 +198,8 @@ class ToolRunner:
     # --- writes: propose only --------------------------------------------------
     def _propose(self, kind: str, payload: dict, summary: str) -> dict:
         action = PendingAction.objects.create(
-            conversation=self.conversation, kind=kind, payload=payload, summary=summary
+            conversation=self.conversation, kind=kind, payload=payload,
+            summary=Truncator(summary).chars(PendingAction.SUMMARY_MAX),
         )
         self.proposed.append(action)
         return {
@@ -218,6 +220,7 @@ class ToolRunner:
     def tool_propose_reschedule(self, appointment_id: int, starts_at: str):
         appointment = services.own_appointment(self.tutor, appointment_id)
         start = parse_time(starts_at)
+        services.check_slot(appointment.pet, appointment.vet, appointment.service, start, ignore=appointment)
         fee = services.late_change_fee(appointment)
         summary = f"Move {appointment.pet.name}'s {appointment.service.name} to {fmt(start)}"
         if fee:

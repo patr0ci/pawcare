@@ -7,17 +7,22 @@ in a way the team can test, monitor and pay for predictably.
 ## What the assistant does
 
 - **Answers from the clinic's own content (RAG).** Help-center articles are chunked, embedded locally
-  (`fastembed`, `bge-small-en-v1.5` — no API cost for embeddings) and stored in Postgres with **pgvector** (HNSW index).
+  (`fastembed`, `bge-small-en-v1.5` — no API cost for embeddings) and stored in Postgres with **pgvector**. Search is exact on purpose: at a few hundred chunks it takes milliseconds,
+  and an approximate (HNSW) index returned empty results right after a re-ingest, while deleted rows were still
+  waiting for vacuum. The full article is sent to the model, not just the matched chunk.
 - **Cites its sources.** Retrieved chunks are grouped per article and numbered; the model must cite `[n]` and the UI links each one.
 - **Says "I don't know".** Chunks beyond a cosine-distance threshold are dropped, and the prompt forbids inventing prices or policies.
 - **Acts on the client's account with tools** — lists pets and appointments, finds free slots, and proposes
   bookings, reschedules and cancellations. **The model can't write anything**: a write tool only creates a
   `PendingAction`; the client sees a card and clicks **Confirm**, and the change then runs through the clinic's own
-  booking rules (`clinic/services.py`) — ownership checks, opening hours, vet/species match, slot still free,
-  24-hour late-change fee. Proposals expire after 30 minutes and can't be replayed.
+  booking rules (`clinic/services.py`) — ownership checks, opening hours, which vet sees which species and does which
+  service, the vet *and* the pet both free, past/completed visits locked, 24-hour late-change fee, row locks so two
+  tabs can't double-act. Proposals expire after 30 minutes and can't be replayed.
 - **Tools are scoped to the logged-in user.** The model never passes a user id, so it can't reach another client's data.
 - **Streams** the answer token by token (Server-Sent Events over a plain Django `StreamingHttpResponse`).
-- **Tracks cost.** Every reply stores model, prompt/completion tokens, USD cost and latency; each user has a daily message cap.
+- **Tracks cost.** Every reply stores model, prompt/completion tokens, USD cost and latency — also when the provider
+  fails mid-answer or the visitor closes the tab. Limits: messages per user per day, a site-wide daily USD budget, and
+  a daily cap on demo accounts (per-user limits alone can be bypassed by creating accounts).
 - **Staff dashboard** (`/assistant/dashboard/`): answers, cost per answer, latency, tokens, cost by model and by user,
   tool-call counts, proposed vs confirmed actions, and the latest evaluation run.
 - **Evaluation set** (`python manage.py run_evals`): 27 fixed questions — prices, policies, emergencies, out-of-scope
@@ -81,6 +86,13 @@ The first run scored 24/27. Two of the failures were real problems, not test noi
 A third failure was the test being too strict (the right fact, cited from a different article that also states it),
 so that case now accepts either article. I also tried hybrid (vector + full-text) search for it; it didn't change the
 ranking, so it was reverted rather than kept as unmeasured complexity.
+
+## QA
+
+A full QA round (browser pass over every screen at desktop and phone widths, plus a code review for problems that
+show up with real data, traffic or time) found 10 UI bugs and 19 latent risks — among them afternoon slots never being
+offered, a pet bookable with two vets at once, and the spend cap being bypassable. All were fixed, each with a
+regression test in `tests/test_qa_fixes.py`.
 
 ## Deploy
 

@@ -55,7 +55,9 @@ button { font: inherit; cursor: pointer; }
 .bubble { max-width: 85%; padding: .75rem 1rem; border-radius: var(--radius); border: 1px solid var(--line); }
 .bubble.user { align-self: flex-end; background: var(--user); }
 .bubble.assistant { align-self: flex-start; background: var(--surface); }
-.bubble .text { white-space: pre-wrap; }
+.bubble .text { white-space: pre-wrap; overflow-wrap: anywhere; }
+/* keep the newest bubble and its buttons clear of the sticky composer when scrolled into view */
+.bubble, .action { scroll-margin-bottom: 6rem; }
 .sources { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .6rem; }
 .sources a { font-size: .82rem; background: var(--accent-soft); border-radius: 999px; padding: .15rem .6rem; text-decoration: none; }
 .meta { margin-top: .4rem; font-size: .75rem; color: var(--muted); font-variant-numeric: tabular-nums; }
@@ -71,6 +73,7 @@ button { font: inherit; cursor: pointer; }
 .action-title { font-weight: 600; font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; color: var(--accent); }
 .action-summary { margin: .25rem 0 .6rem; }
 .action-buttons { display: flex; gap: 1rem; align-items: center; }
+.action-buttons .link { min-height: 44px; padding: 0 .5rem; }
 .action.dismissed, .action.failed { border-color: var(--line); background: transparent; }
 .action.dismissed .action-title, .action.failed .action-title { color: var(--muted); }
 
@@ -91,3 +94,5 @@ th { color: var(--muted); font-weight: 500; }
 .evals tr.fail td:first-child { color: #c0392b; font-weight: 700; }
 .evals tr.pass td:first-child { color: var(--accent); }
 .fail-reason { color: #c0392b; }
+.demo-alt { margin-top: 1.2rem; }
+.prose ul { padding-left: 1.2rem; }

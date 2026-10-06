@@ -17,7 +17,12 @@ from assistant.llm import get_llm
 from assistant.models import Conversation, EvalRun
 
 CASES = Path(__file__).parent / "cases.json"
-REFUSAL = re.compile(r"don't know|do not know|not sure|don't have|do not have|not (?:able|available)|can't|cannot|call (?:us|the clinic)|(?:555\) 014-7788)", re.I)
+REFUSAL = re.compile(
+    r"don't know|do not know|not sure|don't have|do not have|not (?:able|available)|can't|cannot|only help"
+    r"|don't offer|do not offer|not among|aren't (?:among|part|something)|isn't (?:among|part|something)"
+    r"|call (?:us|the clinic)|555\) 014-7788",
+    re.I,
+)
 
 
 class _Rollback(Exception):
@@ -44,7 +49,7 @@ def score_case(case: dict, text: str, cited_slugs: list[str]) -> list[str]:
 
 
 def run_case(case: dict, user) -> dict:
-    result = {}
+    result = {"question": case["question"], "answer": "", "cited": [], "cost_usd": 0.0, "latency_ms": 0, "tools": []}
     try:
         with transaction.atomic():
             conversation = Conversation.objects.create(user=user)
@@ -64,6 +69,8 @@ def run_case(case: dict, user) -> dict:
             raise _Rollback
     except _Rollback:
         pass
+    except Exception as exc:  # one provider hiccup shouldn't lose the whole run
+        result["failures"] = [f"error: {type(exc).__name__}: {exc}"[:300]]
     return result
 
 

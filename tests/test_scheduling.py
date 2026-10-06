@@ -56,7 +56,7 @@ def test_slot_search_covers_the_whole_day(clinic, tutor):
     exam = Service.objects.get(name="Wellness exam")
     slots = find_slots(biscuit, exam, next_weekday(3))
     assert any(start.hour >= 15 for _, start in slots)  # afternoons were cut off by an "8 earliest" limit
-    assert {vet.name for vet, _ in slots} == {"Dr. Maya Chen", "Dr. Rafael Souza"}
+    assert {vet.name for vet, _ in slots} == {"Dr. Maya Chen"}  # the surgeon does not do wellness exams
 
 
 @pytest.mark.django_db

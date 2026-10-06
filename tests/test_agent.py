@@ -167,7 +167,7 @@ def test_late_cancellation_mentions_fee_and_dismiss_changes_nothing(client, tuto
 def test_reschedule_into_overlapping_time_of_same_appointment(client, tutor, script):
     biscuit = tutor.pets.get(name="Biscuit")
     dental = Service.objects.get(name="Dental cleaning")  # 90 min
-    vet = Vet.objects.get(name="Dr. Maya Chen")
+    vet = Vet.objects.get(name="Dr. Rafael Souza")
     day = next_weekday(3)
     start = timezone.make_aware(timezone.datetime.combine(day, timezone.datetime.min.time())).replace(hour=10)
     appointment = Appointment.objects.create(pet=biscuit, vet=vet, service=dental, starts_at=start)
