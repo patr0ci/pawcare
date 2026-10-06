@@ -16,6 +16,9 @@ class MessageQuerySet(models.QuerySet):
     def today_for(self, user):
         return self.filter(conversation__user=user, role=Message.Role.USER, created_at__date=timezone.localdate())
 
+    def spent_today_usd(self) -> float:
+        return float(self.filter(created_at__date=timezone.localdate()).aggregate(c=Sum("cost_usd"))["c"] or 0)
+
     def totals(self):
         return self.aggregate(
             prompt_tokens=Sum("prompt_tokens"),

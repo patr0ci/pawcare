@@ -38,9 +38,10 @@ def own_appointment(tutor: Tutor, appointment_id: int) -> Appointment:
         ) from None
 
 
-def find_slots(pet: Pet, service: Service, day, limit: int = 8) -> list[tuple[Vet, datetime]]:
+def find_slots(pet: Pet, service: Service, day) -> list[tuple[Vet, datetime]]:
+    """Every free start time that day, across vets who treat the pet's species (a day has at most ~18 per vet)."""
     slots = [(vet, start) for vet in vets_for(pet) for start in available_slots(service, vet, day)]
-    return sorted(slots, key=lambda s: s[1])[:limit]
+    return sorted(slots, key=lambda s: (s[1], s[0].name))
 
 
 def _check_slot(pet: Pet, vet: Vet, service: Service, starts_at: datetime, ignore: Appointment | None = None):

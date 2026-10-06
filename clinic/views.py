@@ -1,4 +1,5 @@
-from django.contrib.auth import login
+from django.conf import settings
+from django.contrib.auth import get_user_model, login
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import redirect, render
 from django.utils import timezone
@@ -14,6 +15,11 @@ def home(request):
 
 @require_POST
 def demo_login(request):
+    created_today = get_user_model().objects.filter(
+        username__startswith="demo-", date_joined__date=timezone.localdate()
+    ).count()
+    if created_today >= settings.DEMO_ACCOUNTS_PER_DAY:
+        return render(request, "clinic/home.html", {"demo_full": True}, status=429)
     tutor = create_demo_tutor()
     login(request, tutor.user, backend="django.contrib.auth.backends.ModelBackend")
     return redirect("assistant:chat")

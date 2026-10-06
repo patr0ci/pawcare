@@ -13,9 +13,13 @@ CONTENT_DIR = Path(__file__).parent / "content"
 
 
 def parse_markdown(path: Path) -> dict:
-    text = path.read_text(encoding="utf-8")
-    _, front, body = text.split("---", 2)
-    meta = dict(line.split(":", 1) for line in front.strip().splitlines())
+    text = path.read_text(encoding="utf-8-sig")
+    try:
+        _, front, body = text.split("---", 2)
+        meta = dict(line.split(":", 1) for line in front.strip().splitlines() if line.strip() and not line.startswith("#"))
+        meta["title"], meta["category"]
+    except (ValueError, KeyError) as exc:
+        raise ValueError(f"{path.name}: expected front matter with 'title:' and 'category:' between '---' lines") from exc
     return {
         "slug": path.stem,
         "title": meta["title"].strip(),
@@ -36,11 +40,22 @@ def index_article(article: Article) -> int:
     return len(texts)
 
 
-def ingest_directory(directory: Path = CONTENT_DIR) -> tuple[int, int]:
-    articles = chunks = 0
+def ingest_directory(directory: Path = CONTENT_DIR) -> dict:
+    """Sync the database with the markdown files: new/edited articles are (re)embedded, unchanged ones are
+    skipped, and articles whose file is gone are deleted. Safe to run on every deploy."""
+    stats = {"created": 0, "updated": 0, "unchanged": 0, "deleted": 0, "chunks": 0}
+    slugs = []
     for path in sorted(directory.glob("*.md")):
         data = parse_markdown(path)
-        article, _ = Article.objects.update_or_create(slug=data.pop("slug"), defaults=data)
-        chunks += index_article(article)
-        articles += 1
-    return articles, chunks
+        slug = data.pop("slug")
+        slugs.append(slug)
+        article = Article.objects.filter(slug=slug).first()
+        if article and all(getattr(article, k) == v for k, v in data.items()) and article.chunks.exists():
+            stats["unchanged"] += 1
+            continue
+        article, created = Article.objects.update_or_create(slug=slug, defaults=data)
+        stats["chunks"] += index_article(article)
+        stats["created" if created else "updated"] += 1
+    _, deleted = Article.objects.exclude(slug__in=slugs).delete()  # also cascades their chunks
+    stats["deleted"] = deleted.get("helpcenter.Article", 0)
+    return stats

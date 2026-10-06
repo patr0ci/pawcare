@@ -6,7 +6,7 @@ from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.decorators import login_required
 from django.db.models import Avg, Count, Sum
 from django.db.models.functions import TruncDate
-from django.http import HttpResponseBadRequest, JsonResponse, StreamingHttpResponse
+from django.http import JsonResponse, StreamingHttpResponse
 from datetime import timedelta
 
 from django.shortcuts import get_object_or_404, render
@@ -54,9 +54,11 @@ def chat(request):
 def send_message(request):
     question = request.POST.get("message", "").strip()
     if not question or len(question) > MAX_QUESTION_CHARS:
-        return HttpResponseBadRequest("Message must be between 1 and 1000 characters.")
+        return JsonResponse({"error": "Message must be between 1 and 1000 characters."}, status=400)
     if Message.objects.today_for(request.user).count() >= settings.ASSISTANT_DAILY_MESSAGE_LIMIT:
         return JsonResponse({"error": "Daily message limit reached. Come back tomorrow!"}, status=429)
+    if Message.objects.spent_today_usd() >= settings.ASSISTANT_DAILY_BUDGET_USD:
+        return JsonResponse({"error": "The demo has used up today's AI budget. Please come back tomorrow!"}, status=429)
 
     conversation = current_conversation(request)
 

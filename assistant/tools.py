@@ -169,14 +169,17 @@ class ToolRunner:
         service = Service.objects.get(id=service_id)
         day = parse_date(date)
         slots = services.find_slots(pet, service, day)
-        return {
-            "date": day.isoformat(),
-            "slots": [
-                {"vet_id": vet.id, "vet": vet.name, "starts_at": timezone.localtime(start).isoformat(), "label": fmt(start)}
-                for vet, start in slots
-            ],
-            "note": "" if slots else "No free times that day (closed Sundays; Saturdays 9:00–13:00).",
-        }
+        by_vet: dict[int, dict] = {}
+        for vet, start in slots:
+            entry = by_vet.setdefault(vet.id, {"vet_id": vet.id, "vet": vet.name, "specialty": vet.specialty, "starts_at": []})
+            entry["starts_at"].append(timezone.localtime(start).isoformat(timespec="minutes"))
+        if slots:
+            note = ""
+        elif day < timezone.localdate():
+            note = "That date is in the past."
+        else:
+            note = "No free times that day (closed Sundays; Saturdays 9:00–13:00)."
+        return {"date": day.isoformat(), "weekday": day.strftime("%A"), "vets": list(by_vet.values()), "note": note}
 
     def tool_list_my_appointments(self):
         upcoming = (
@@ -206,7 +209,7 @@ class ToolRunner:
     def tool_propose_booking(self, pet_id: int, service_id: int, vet_id: int, starts_at: str):
         pet = services.own_pet(self.tutor, pet_id)
         service, vet, start = Service.objects.get(id=service_id), Vet.objects.get(id=vet_id), parse_time(starts_at)
-        if (vet, start) not in services.find_slots(pet, service, timezone.localtime(start).date(), limit=100):
+        if (vet, start) not in services.find_slots(pet, service, timezone.localtime(start).date()):
             raise BookingError("That time isn't available. Check find_available_slots again.")
         summary = f"Book {service.name} for {pet.name} with {vet.name} on {fmt(start)} (${service.price_usd})"
         payload = {"pet_id": pet.id, "service_id": service.id, "vet_id": vet.id, "starts_at": start.isoformat()}

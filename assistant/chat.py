@@ -101,7 +101,7 @@ def answer(conversation: Conversation, question: str) -> Iterator[dict]:
     runner = ToolRunner(conversation)
     usage, model, parts, trace = Usage(), "", [], []
     for _ in range(MAX_TOOL_ROUNDS):
-        done, round_has_text = None, False
+        done, round_has_text, round_start = None, False, len(parts)
         for event in get_llm().stream(messages, tools=TOOLS):
             if isinstance(event, Delta):
                 text = event.text
@@ -119,7 +119,7 @@ def answer(conversation: Conversation, question: str) -> Iterator[dict]:
         messages.append(
             {
                 "role": "assistant",
-                "content": "".join(parts) or None,
+                "content": "".join(parts[round_start:]) or None,
                 "tool_calls": [
                     {"id": c.id, "type": "function", "function": {"name": c.name, "arguments": c.arguments}}
                     for c in done.tool_calls

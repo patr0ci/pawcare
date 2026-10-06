@@ -16,9 +16,40 @@ def test_chunks_carry_the_article_title():
 
 @pytest.mark.django_db
 def test_real_content_ingests():
-    articles, chunks = ingest_directory()
-    assert articles >= 15
-    assert chunks >= articles
+    stats = ingest_directory()
+    assert stats["created"] >= 15
+    assert stats["chunks"] >= stats["created"]
+
+
+@pytest.mark.django_db
+def test_ingest_only_reembeds_changes_and_drops_deleted_files(tmp_path):
+    from helpcenter.models import Article
+
+    def write(name, title, body):
+        (tmp_path / f"{name}.md").write_text(f"---\ntitle: {title}\ncategory: Policies\n---\n\n{body}\n")
+
+    write("hours", "Hours", "Open 9 to 18.")
+    write("fees", "Fees", "Late fee is $25.")
+    assert ingest_directory(tmp_path)["created"] == 2
+
+    write("fees", "Fees", "Late fee is $30.")
+    (tmp_path / "hours.md").unlink()
+    stats = ingest_directory(tmp_path)
+    assert (stats["updated"], stats["unchanged"], stats["deleted"]) == (1, 0, 1)
+    assert Article.objects.get().body == "Late fee is $30."
+    assert ingest_directory(tmp_path)["unchanged"] == 1
+
+
+def test_bad_front_matter_names_the_file(tmp_path):
+    from helpcenter.ingest import parse_markdown
+
+    bad = tmp_path / "broken.md"
+    bad.write_text("no front matter here")
+    with pytest.raises(ValueError, match="broken.md"):
+        parse_markdown(bad)
+    ok = tmp_path / "ok.md"
+    ok.write_text("\ufeff---\n# comment\ntitle: A: B\n\ncategory: X\n---\nbody")
+    assert parse_markdown(ok)["title"] == "A: B"
 
 
 @pytest.mark.django_db

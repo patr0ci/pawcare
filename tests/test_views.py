@@ -75,3 +75,31 @@ def test_pages_render(client, articles):
     for name in ["home", "helpcenter:index"]:
         assert client.get(reverse(name)).status_code == 200
     assert client.get("/help/vaccine-prices/").status_code == 200
+
+
+@pytest.mark.django_db
+def test_site_wide_daily_budget_stops_the_assistant(client, tutor, settings):
+    from assistant.models import Conversation
+
+    settings.ASSISTANT_DAILY_BUDGET_USD = 0.01
+    other = Conversation.objects.create(user=tutor.user)
+    Message.objects.create(conversation=other, role="assistant", content="x", cost_usd="0.010000")
+    client.force_login(tutor.user)
+    response = client.post(reverse("assistant:send_message"), {"message": "hello"})
+    assert response.status_code == 429 and "budget" in response.json()["error"]
+
+
+@pytest.mark.django_db
+def test_demo_accounts_are_capped_per_day(client, clinic, settings):
+    settings.DEMO_ACCOUNTS_PER_DAY = 2
+    for _ in range(2):
+        assert client.post(reverse("demo_login")).status_code == 302
+    response = client.post(reverse("demo_login"))
+    assert response.status_code == 429 and b"capacity" in response.content
+
+
+@pytest.mark.django_db
+def test_validation_errors_are_json(client, tutor):
+    client.force_login(tutor.user)
+    response = client.post(reverse("assistant:send_message"), {"message": ""})
+    assert response.status_code == 400 and "1000" in response.json()["error"]

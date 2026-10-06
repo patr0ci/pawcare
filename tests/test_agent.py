@@ -247,3 +247,23 @@ def test_empty_model_reply_gets_a_fallback(tutor, script):
     script("")
     events = list(answer(Conversation.objects.create(user=tutor.user), "hm"))
     assert "rephrase" in "".join(e["text"] for e in events if e["type"] == "delta")
+
+
+@pytest.mark.django_db
+def test_each_round_sends_only_its_own_text_back(tutor, monkeypatch):
+    class Narrating(ScriptedLLM):
+        def stream(self, messages, tools=None):
+            self.seen_messages.append(list(messages))
+            step = self.rounds.pop(0)
+            if step == "narrate":
+                yield Delta(f"Step {len(self.rounds)}.")
+                yield Done(Usage(1, 1), "m", tool_calls=[ToolCall("c", "list_my_pets", "{}")])
+            else:
+                yield Delta(step)
+                yield Done(Usage(1, 1), "m")
+
+    llm = Narrating(["narrate", "narrate", "Done."])
+    monkeypatch.setattr(chat, "get_llm", lambda: llm)
+    list(answer(Conversation.objects.create(user=tutor.user), "pets?"))
+    assistant_turns = [m["content"] for m in llm.seen_messages[-1] if m["role"] == "assistant" and m.get("tool_calls")]
+    assert assistant_turns == ["Step 2.", "\n\nStep 1."]

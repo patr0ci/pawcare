@@ -9,6 +9,7 @@
     help center). On top of it sits an assistant that retrieves help-center articles (RAG), cites its sources,
     admits when it doesn't know, and logs tokens and cost for every answer.
   </p>
+  {% if demo_full %}<p class="hint">The demo is at capacity for today. Please come back tomorrow!</p>{% endif %}
   {% if user.is_authenticated %}
     <a class="button" href="{% url 'assistant:chat' %}">Open the assistant</a>
   {% else %}

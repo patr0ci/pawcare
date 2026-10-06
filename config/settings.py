@@ -131,6 +131,9 @@ RAG_MAX_DISTANCE = float(os.getenv("RAG_MAX_DISTANCE", "0.42"))
 
 # Per-user cap on assistant messages per day, so a public demo can't run up the LLM bill.
 ASSISTANT_DAILY_MESSAGE_LIMIT = int(os.getenv("ASSISTANT_DAILY_MESSAGE_LIMIT", "30"))
+# Site-wide caps. Per-user limits alone don't bound spend on a public demo: anyone can create more demo accounts.
+ASSISTANT_DAILY_BUDGET_USD = float(os.getenv("ASSISTANT_DAILY_BUDGET_USD", "1.00"))
+DEMO_ACCOUNTS_PER_DAY = int(os.getenv("DEMO_ACCOUNTS_PER_DAY", "300"))
 
 # Public demo only: let any logged-in visitor open the staff dashboard (it shows costs and eval results).
 DEMO_PUBLIC_DASHBOARD = env_bool("DEMO_PUBLIC_DASHBOARD", False)
