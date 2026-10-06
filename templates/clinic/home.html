@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Home{% endblock %}
+{% block content %}
+<section class="hero">
+  <p class="eyebrow">Demo · AI added to an existing Django app</p>
+  <h1>Ask PawCare anything.<br>It answers from the clinic's own docs — and shows where.</h1>
+  <p class="lead">
+    This is a fictional vet clinic. The "existing system" is a regular Django app (pets, vets, appointments,
+    help center). On top of it sits an assistant that retrieves help-center articles (RAG), cites its sources,
+    admits when it doesn't know, and logs tokens and cost for every answer.
+  </p>
+  {% if user.is_authenticated %}
+    <a class="button" href="{% url 'assistant:chat' %}">Open the assistant</a>
+  {% else %}
+    <form method="post" action="{% url 'demo_login' %}">{% csrf_token %}
+      <button class="button">Try it — no sign-up</button>
+    </form>
+    <p class="hint">You get a throwaway demo account with two pets, Biscuit 🐶 and Miso 🐱.</p>
+  {% endif %}
+</section>
+<section class="features">
+  <div><h3>Grounded answers</h3><p>Retrieval over the clinic's help center with pgvector. Every claim links to the article it came from.</p></div>
+  <div><h3>Says "I don't know"</h3><p>Low-relevance results are dropped, so the model can't improvise prices or policies.</p></div>
+  <div><h3>Cost under control</h3><p>Tokens and USD logged per message, plus a per-user daily limit set in config.</p></div>
+  <div><h3>Any model</h3><p>OpenAI-compatible client: OpenRouter, OpenAI, DeepSeek or a self-hosted model — a config change.</p></div>
+</section>
+{% endblock %}

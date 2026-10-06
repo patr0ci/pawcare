@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}My pets{% endblock %}
+{% block content %}
+<h1>My pets</h1>
+<div class="cards">
+  {% for pet in pets %}
+    <article class="card">
+      <h3>{{ pet.name }}</h3>
+      <p>{{ pet.get_species_display }}{% if pet.breed %} · {{ pet.breed }}{% endif %}{% if pet.weight_kg %} · {{ pet.weight_kg }} kg{% endif %}</p>
+      {% if pet.allergies %}<p class="muted">Allergies: {{ pet.allergies }}</p>{% endif %}
+    </article>
+  {% empty %}
+    <p class="muted">No pets on file.</p>
+  {% endfor %}
+</div>
+<h2>Upcoming appointments</h2>
+{% if upcoming %}
+  <ul class="list">
+    {% for a in upcoming %}
+      <li><strong>{{ a.starts_at|date:"D, M j · g:i A" }}</strong> — {{ a.pet.name }}: {{ a.service }} with {{ a.vet }}</li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <p class="muted">Nothing booked yet.</p>
+{% endif %}
+{% endblock %}

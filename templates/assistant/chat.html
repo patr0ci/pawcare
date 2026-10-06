@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Assistant{% endblock %}
+{% block main_class %}chat-page{% endblock %}
+{% block content %}
+<div class="chat-header">
+  <div>
+    <h1>PawCare assistant</h1>
+    <p class="muted">Answers come from the <a href="{% url 'helpcenter:index' %}">help center</a>. Not veterinary advice.</p>
+  </div>
+  <a class="link" href="?new=1">New conversation</a>
+</div>
+<div id="log" class="log" aria-live="polite">
+  {% for m in messages_ %}
+    <div class="bubble {{ m.role }}">
+      <div class="text">{{ m.content }}</div>
+      {% if m.role == "assistant" %}
+        {% if m.sources %}<div class="sources">{% for s in m.sources %}<a href="{{ s.url }}" target="_blank">[{{ s.number }}] {{ s.title }}</a>{% endfor %}</div>{% endif %}
+        <div class="meta">{{ m.model }} · {{ m.prompt_tokens|add:m.completion_tokens }} tokens · ${{ m.cost_usd|floatformat:5 }} · {{ m.latency_ms }} ms</div>
+      {% endif %}
+    </div>
+  {% empty %}
+    <div class="empty">
+      <p>Try one of these:</p>
+      <button class="chip">How much is a rabies vaccine?</button>
+      <button class="chip">My dog has surgery tomorrow, when should he stop eating?</button>
+      <button class="chip">Do you treat snakes?</button>
+      <button class="chip">Can I pay in installments?</button>
+    </div>
+  {% endfor %}
+</div>
+<form id="composer" class="composer" method="post" action="{% url 'assistant:send_message' %}">
+  {% csrf_token %}
+  <input name="message" id="message" maxlength="1000" autocomplete="off" placeholder="Ask about prices, vaccines, surgery prep…" required>
+  <button class="button" type="submit">Send</button>
+</form>
+<p class="muted small">{{ remaining }} messages left today in this demo.</p>
+{% endblock %}
+{% block scripts %}<script src="{% static 'js/chat.js' %}"></script>{% endblock %}

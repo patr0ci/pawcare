@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Help center{% endblock %}
+{% block content %}
+<h1>Help center</h1>
+<p class="lead">These articles are the assistant's only source of truth.</p>
+{% for category, articles in categories %}
+  <h2>{{ category }}</h2>
+  <ul class="list">
+    {% for article in articles %}<li><a href="{{ article.get_absolute_url }}">{{ article.title }}</a></li>{% endfor %}
+  </ul>
+{% empty %}
+  <p class="muted">No articles yet. Run <code>python manage.py ingest_helpcenter</code>.</p>
+{% endfor %}
+{% endblock %}
