@@ -79,3 +79,12 @@ def test_chunks_of_the_same_article_become_one_source(db):
     sources = retrieve("rabies vaccine fact", max_distance=2)
     assert len(sources) == 1
     assert sources[0].text.count("Rabies vaccine fact number") == 3
+
+
+@pytest.mark.django_db
+def test_change_of_topic_is_not_dragged_back_to_previous_question(articles, tutor, settings):
+    settings.RAG_MAX_DISTANCE = 0.75
+    conversation = Conversation.objects.create(user=tutor.user)
+    list(answer(conversation, "how much is the rabies vaccine"))
+    events = list(answer(conversation, "are you open on sunday"))
+    assert events[0]["sources"][0]["title"] == "Opening Hours"

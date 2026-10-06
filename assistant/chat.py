@@ -17,6 +17,8 @@ Rules:
 - Cite the sources you used inline, like [1] or [2]. Every factual sentence needs a citation.
 - If the sources don't contain the answer, say you don't know and suggest calling the clinic at (555) 014-7788. Never invent prices, dates, or policies.
 - You are not a veterinarian: do not diagnose or prescribe. For anything that sounds urgent, point to the emergency information in the sources.
+- Judge every question on its own against the sources below; earlier refusals in the conversation don't carry over.
+- If something is only partly covered (e.g. a rule with conditions), explain the condition instead of refusing.
 - Be brief and friendly. Plain text, no markdown headings.
 
 Sources:
@@ -38,16 +40,17 @@ def build_messages(conversation: Conversation, question: str, sources: list[Sour
     ]
 
 
-def retrieval_query(conversation: Conversation, question: str) -> str:
-    """Follow-ups like "and for cats?" only make sense with the previous question attached."""
+def retrieval_queries(conversation: Conversation, question: str) -> list[str]:
+    """The question alone, plus the question joined to the previous one. The second catches follow-ups
+    like "and for cats?"; keeping the first means a change of topic isn't dragged back to the old one."""
     previous = conversation.messages.filter(role=Message.Role.USER).order_by("-created_at").first()
-    return f"{previous.content}\n{question}" if previous else question
+    return [question, f"{previous.content}\n{question}"] if previous else [question]
 
 
 def answer(conversation: Conversation, question: str) -> Iterator[dict]:
     """Yields SSE-ready events: {"type": "delta"|"sources"|"done", ...}. Persists both messages."""
     started = time.monotonic()
-    sources = retrieve(retrieval_query(conversation, question))
+    sources = retrieve(retrieval_queries(conversation, question))
     messages = build_messages(conversation, question, sources)
     Message.objects.create(conversation=conversation, role=Message.Role.USER, content=question)
 
