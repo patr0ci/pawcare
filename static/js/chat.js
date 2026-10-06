@@ -16,6 +16,34 @@ function bubble(role, text = "") {
   return el;
 }
 
+const csrf = () => form.querySelector("[name=csrfmiddlewaretoken]").value;
+
+function actionCard(action) {
+  // A proposed write. Nothing happens on the server until the user clicks Confirm.
+  const card = document.createElement("div");
+  card.className = "action";
+  card.innerHTML = `<div class="action-title">Please confirm</div><div class="action-summary"></div>
+    <div class="action-buttons"><button class="button confirm">Confirm</button><button class="link dismiss">Not now</button></div>`;
+  card.querySelector(".action-summary").textContent = action.summary;
+  const decide = async (verb) => {
+    card.querySelectorAll("button").forEach((b) => (b.disabled = true));
+    const response = await fetch(`/assistant/actions/${action.id}/${verb}/`, {
+      method: "POST",
+      headers: { "X-CSRFToken": csrf() },
+    });
+    const data = await response.json().catch(() => ({ message: "Something went wrong." }));
+    card.querySelector(".action-buttons").remove();
+    card.querySelector(".action-title").textContent = data.status === "confirmed" ? "Done" : "No changes";
+    card.classList.add(data.status || "failed");
+    bubble("assistant", data.message);
+  };
+  card.querySelector(".confirm").addEventListener("click", () => decide("confirm"));
+  card.querySelector(".dismiss").addEventListener("click", () => decide("dismiss"));
+  return card;
+}
+
+document.querySelectorAll("[data-action]").forEach((el) => el.replaceWith(actionCard(JSON.parse(el.dataset.action))));
+
 function renderSources(el, sources) {
   if (!sources.length) return;
   const box = document.createElement("div");
@@ -36,6 +64,9 @@ async function send(question) {
   bubble("user", question);
   const reply = bubble("assistant");
   const text = reply.querySelector(".text");
+  const status = document.createElement("div");
+  status.className = "status";
+  reply.prepend(status);
   text.classList.add("typing");
   input.value = "";
   input.disabled = true;
@@ -60,10 +91,12 @@ async function send(question) {
         if (!raw.startsWith("data: ")) continue;
         const event = JSON.parse(raw.slice(6));
         if (event.type === "sources") sources = event.sources;
-        if (event.type === "delta") { text.textContent += event.text; reply.scrollIntoView({ block: "end" }); }
+        if (event.type === "delta") { status.textContent = ""; text.textContent += event.text; reply.scrollIntoView({ block: "end" }); }
+        if (event.type === "tool") status.textContent = `${event.label}…`;
+        if (event.type === "action") { reply.append(actionCard(event)); reply.scrollIntoView({ block: "end" }); }
         if (event.type === "error") text.textContent = event.message;
         if (event.type === "done") {
-          renderSources(reply, sources);
+          renderSources(reply, sources.filter((s) => event.cited.includes(s.number)));
           const meta = document.createElement("div");
           meta.className = "meta";
           meta.textContent = `$${event.cost_usd.toFixed(5)}`;
@@ -75,6 +108,7 @@ async function send(question) {
     text.textContent = "Connection lost. Please try again.";
   } finally {
     text.classList.remove("typing");
+    status.remove();
     input.disabled = false;
     input.focus();
   }

@@ -6,7 +6,7 @@ so switching models is a config change, not a rewrite. `FakeLLM` keeps tests and
 
 import re
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import lru_cache
 
 from django.conf import settings
@@ -31,9 +31,17 @@ class Delta:
 
 
 @dataclass
+class ToolCall:
+    id: str
+    name: str
+    arguments: str  # raw JSON string, as the model produced it
+
+
+@dataclass
 class Done:
     usage: Usage
     model: str
+    tool_calls: list[ToolCall] = field(default_factory=list)
 
 
 Event = Delta | Done
@@ -46,23 +54,34 @@ class OpenAICompatibleLLM:
         self.client = OpenAI(base_url=base_url, api_key=api_key, timeout=60, max_retries=2)
         self.model = model
 
-    def stream(self, messages: list[dict]) -> Iterator[Event]:
+    def stream(self, messages: list[dict], tools: list[dict] | None = None) -> Iterator[Event]:
         response = self.client.chat.completions.create(
             model=self.model,
             messages=messages,
+            tools=tools or None,
             stream=True,
             stream_options={"include_usage": True},
             temperature=0.2,
         )
         usage = Usage()
         model = self.model
+        calls: dict[int, ToolCall] = {}  # tool calls arrive in fragments, keyed by index
         for chunk in response:
             if chunk.usage:
                 usage = Usage(chunk.usage.prompt_tokens, chunk.usage.completion_tokens)
             model = chunk.model or model
-            if chunk.choices and chunk.choices[0].delta.content:
-                yield Delta(chunk.choices[0].delta.content)
-        yield Done(usage=usage, model=model)
+            if not chunk.choices:
+                continue
+            delta = chunk.choices[0].delta
+            if delta.content:
+                yield Delta(delta.content)
+            for fragment in delta.tool_calls or []:
+                call = calls.setdefault(fragment.index, ToolCall(id="", name="", arguments=""))
+                call.id = fragment.id or call.id
+                if fragment.function:
+                    call.name += fragment.function.name or ""
+                    call.arguments += fragment.function.arguments or ""
+        yield Done(usage=usage, model=model, tool_calls=[calls[i] for i in sorted(calls)])
 
 
 class FakeLLM:
@@ -70,7 +89,7 @@ class FakeLLM:
 
     model = "fake"
 
-    def stream(self, messages: list[dict]) -> Iterator[Event]:
+    def stream(self, messages: list[dict], tools: list[dict] | None = None) -> Iterator[Event]:
         sources = messages[0]["content"].split("Sources:\n", 1)[-1]
         # Source block layout: "[1] Title (url)\nTitle\n\nFirst paragraph..."
         match = re.match(r"\[1\] [^\n]*\n[^\n]*\n\n([^\n]+)", sources)

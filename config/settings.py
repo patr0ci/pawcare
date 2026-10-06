@@ -98,10 +98,10 @@ LOGOUT_REDIRECT_URL = "home"
 LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openai_compatible")
 LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://openrouter.ai/api/v1")
 LLM_API_KEY = os.getenv("LLM_API_KEY", "")
-LLM_MODEL = os.getenv("LLM_MODEL", "google/gemini-2.5-flash-lite")
+LLM_MODEL = os.getenv("LLM_MODEL", "deepseek/deepseek-v4.1-flash")
 # USD per 1M tokens, used for the cost dashboard. Keep in sync with your provider's price page.
-LLM_PRICE_INPUT_PER_M = float(os.getenv("LLM_PRICE_INPUT_PER_M", "0.10"))
-LLM_PRICE_OUTPUT_PER_M = float(os.getenv("LLM_PRICE_OUTPUT_PER_M", "0.40"))
+LLM_PRICE_INPUT_PER_M = float(os.getenv("LLM_PRICE_INPUT_PER_M", "0.055"))
+LLM_PRICE_OUTPUT_PER_M = float(os.getenv("LLM_PRICE_OUTPUT_PER_M", "1.32"))
 
 EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "fastembed")  # or "fake"
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-small-en-v1.5")

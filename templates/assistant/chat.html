@@ -26,7 +26,12 @@
       <button class="chip">My dog has surgery tomorrow, when should he stop eating?</button>
       <button class="chip">Do you treat snakes?</button>
       <button class="chip">Can I pay in installments?</button>
+      <button class="chip">Book a wellness exam for Biscuit next Tuesday morning</button>
+      <button class="chip">What appointments do I have coming up?</button>
     </div>
+  {% endfor %}
+  {% for a in pending %}
+    <div data-action='{"id": {{ a.id }}, "summary": "{{ a.summary|escapejs }}"}'></div>
   {% endfor %}
 </div>
 <form id="composer" class="composer" method="post" action="{% url 'assistant:send_message' %}">

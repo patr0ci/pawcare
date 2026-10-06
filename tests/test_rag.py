@@ -88,3 +88,17 @@ def test_change_of_topic_is_not_dragged_back_to_previous_question(articles, tuto
     list(answer(conversation, "how much is the rabies vaccine"))
     events = list(answer(conversation, "are you open on sunday"))
     assert events[0]["sources"][0]["title"] == "Opening Hours"
+
+
+def test_cited_numbers():
+    from assistant.chat import cited_numbers
+
+    assert cited_numbers("Fee is $45 [1]. Plans over $300 [2, 3]. Also [1][4]. Not a cite: [x]") == {1, 2, 3, 4}
+
+
+@pytest.mark.django_db
+def test_only_cited_sources_are_kept(articles, tutor):
+    conversation = Conversation.objects.create(user=tutor.user)
+    events = list(answer(conversation, "how much is the rabies vaccine"))
+    assert events[-1]["cited"] == [1]
+    assert [s["number"] for s in conversation.messages.last().sources] == [1]

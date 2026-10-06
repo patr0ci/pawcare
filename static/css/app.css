@@ -65,3 +65,11 @@ button { font: inherit; cursor: pointer; }
 .composer input { flex: 1; min-width: 0; padding: .75rem 1rem; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font: inherit; }
 .typing::after { content: "▍"; animation: blink 1s steps(1) infinite; }
 @keyframes blink { 50% { opacity: 0; } }
+.status { font-size: .82rem; color: var(--muted); font-style: italic; }
+.status:empty { display: none; }
+.action { margin-top: .7rem; border: 1px solid var(--accent); border-radius: 12px; padding: .7rem .9rem; background: var(--accent-soft); }
+.action-title { font-weight: 600; font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; color: var(--accent); }
+.action-summary { margin: .25rem 0 .6rem; }
+.action-buttons { display: flex; gap: 1rem; align-items: center; }
+.action.dismissed, .action.failed { border-color: var(--line); background: transparent; }
+.action.dismissed .action-title, .action.failed .action-title { color: var(--muted); }
