@@ -1,7 +1,7 @@
 # Production behind a Cloudflare Tunnel: no inbound ports, no reverse proxy on the host.
 # Resource limits keep the demo from competing with other workloads on a shared server.
 #   docker compose -p pawcare -f docker-compose.tunnel.yml up -d --build
-# .env needs: DJANGO_SECRET_KEY, POSTGRES_PASSWORD, LLM_API_KEY, DOMAIN, TUNNEL_TOKEN
+# .env needs: DJANGO_SECRET_KEY, POSTGRES_PASSWORD, DOMAIN, TUNNEL_TOKEN (+ LLM_API_KEY here or in .env.local)
 services:
   db:
     image: pgvector/pgvector:pg17-trixie
@@ -22,7 +22,10 @@ services:
 
   web:
     build: .
-    env_file: .env
+    env_file:
+      - .env
+      - path: .env.local
+        required: false
     environment:
       POSTGRES_HOST: db
       POSTGRES_PORT: "5432"
