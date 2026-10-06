@@ -1,0 +1,52 @@
+# Production behind a Cloudflare Tunnel: no inbound ports, no reverse proxy on the host.
+# Resource limits keep the demo from competing with other workloads on a shared server.
+#   docker compose -p pawcare -f docker-compose.tunnel.yml up -d --build
+# .env needs: DJANGO_SECRET_KEY, POSTGRES_PASSWORD, LLM_API_KEY, DOMAIN, TUNNEL_TOKEN
+services:
+  db:
+    image: pgvector/pgvector:pg17-trixie
+    environment:
+      POSTGRES_DB: pawcare
+      POSTGRES_USER: pawcare
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pawcare"]
+      interval: 5s
+      retries: 10
+    deploy:
+      resources:
+        limits: {cpus: "1", memory: 512M}
+    restart: unless-stopped
+
+  web:
+    build: .
+    env_file: .env
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
+      DJANGO_DEBUG: "false"
+      DJANGO_ALLOWED_HOSTS: ${DOMAIN:?set DOMAIN}
+      DJANGO_CSRF_TRUSTED_ORIGINS: https://${DOMAIN}
+    depends_on:
+      db:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits: {cpus: "2", memory: 1536M}
+    restart: unless-stopped
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?set TUNNEL_TOKEN}
+    depends_on: [web]
+    deploy:
+      resources:
+        limits: {cpus: "0.5", memory: 256M}
+    restart: unless-stopped
+
+volumes:
+  pgdata:

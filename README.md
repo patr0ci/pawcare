@@ -89,6 +89,12 @@ cp .env.example .env    # set DJANGO_SECRET_KEY, POSTGRES_PASSWORD, LLM_API_KEY
 DOMAIN=pawcare.example.com docker compose -f docker-compose.prod.yml up -d --build
 ```
 
+Or, on a server without public ports, behind a Cloudflare Tunnel (`TUNNEL_TOKEN` in `.env`):
+
+```bash
+docker compose -p pawcare -f docker-compose.tunnel.yml up -d --build
+```
+
 Postgres + pgvector, the app (gunicorn with threaded workers so streams don't block), and Caddy with automatic HTTPS
 and response buffering off for SSE. The embedding model is baked into the image; first boot migrates, seeds and
 indexes the help center.
