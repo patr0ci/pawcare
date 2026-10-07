@@ -2,9 +2,10 @@ from django.conf import settings
 from django.contrib.auth import get_user_model, login
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import redirect, render
+from django.templatetags.static import static
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_http_methods
 
 from assistant.models import Message
 
@@ -20,8 +21,16 @@ def budget_spent() -> bool:
     return Message.objects.spent_today_usd() >= settings.ASSISTANT_DAILY_BUDGET_USD
 
 
-@require_POST
+def favicon(request):
+    # Browsers and crawlers ask for /favicon.ico whatever the page's <link rel="icon"> says. Not permanent: in
+    # production the target is a hashed file name that changes when the icon does.
+    return redirect(static("img/favicon.svg"))
+
+
+@require_http_methods(["GET", "POST"])
 def demo_login(request):
+    if request.method == "GET":  # a shared or reloaded /demo/ link: the button that creates the account is on home
+        return redirect("home")
     created_today = (
         get_user_model().objects.filter(username__startswith="demo-", date_joined__date=timezone.localdate()).count()
     )

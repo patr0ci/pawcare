@@ -5,6 +5,7 @@ from datetime import date
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
+from django.db import transaction
 
 from .models import Pet, Service, Tutor, Vet
 
@@ -33,13 +34,20 @@ SERVICES = [
 ]
 
 
-def seed_clinic() -> None:
+@transaction.atomic  # all or nothing: a half-seeded clinic isn't empty, so it would never be completed
+def seed_clinic(force: bool = False) -> bool:
+    """Create the vets and services. It runs on every boot, so by default it only fills an empty clinic: prices,
+    durations or a vet's name edited in the admin must survive a restart. `force` re-syncs everything from here.
+    Returns whether anything was written."""
+    if not force and (Vet.objects.exists() or Service.objects.exists()):
+        return False
     for name, specialty, treats in VETS:
         Vet.objects.update_or_create(name=name, defaults={"specialty": specialty, "treats": treats})
     for name, minutes, price in SERVICES:
         Service.objects.update_or_create(name=name, defaults={"duration_minutes": minutes, "price_usd": Decimal(price)})
     for vet_name, service_names in VET_SERVICES.items():
         Vet.objects.get(name=vet_name).services.set(Service.objects.filter(name__in=service_names))
+    return True
 
 
 def create_demo_tutor() -> Tutor:

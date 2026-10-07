@@ -15,10 +15,17 @@ def env_bool(name: str, default: bool = False) -> bool:
 
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-only-insecure-key")
 DEBUG = env_bool("DJANGO_DEBUG", True)
-if not DEBUG and SECRET_KEY == "dev-only-insecure-key":
+# The code's default and .env.example's placeholder are both public: neither may sign sessions in production.
+if not DEBUG and SECRET_KEY in {"dev-only-insecure-key", "change-me"}:
     raise RuntimeError("Set DJANGO_SECRET_KEY in production.")
 ALLOWED_HOSTS = [h for h in os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if h]
-CSRF_TRUSTED_ORIGINS = [o for o in os.getenv("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",") if o]
+# Origins need a scheme, or Django refuses to start. The compose files build this as https://${DOMAIN}, so a DOMAIN
+# of "a.com,www.a.com" gives "https://a.com,www.a.com": the bare host gets https:// too.
+CSRF_TRUSTED_ORIGINS = [
+    o if "://" in o else f"https://{o}"
+    for o in (o.strip() for o in os.getenv("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(","))
+    if o
+]
 
 INSTALLED_APPS = [
     "django.contrib.admin",

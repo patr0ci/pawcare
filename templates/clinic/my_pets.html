@@ -21,6 +21,6 @@
     {% endfor %}
   </ul>
 {% else %}
-  <p class="muted">Nothing booked yet. <a href="{% url 'assistant:chat' %}">Ask the assistant to book a visit →</a></p>
+  <p class="muted">No upcoming appointments. <a href="{% url 'assistant:chat' %}">Ask the assistant to book a visit →</a></p>
 {% endif %}
 {% endblock %}
