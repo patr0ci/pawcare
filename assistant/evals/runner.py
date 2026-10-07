@@ -23,7 +23,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from assistant import chat
-from assistant.chat import CLAIMS_ACTION, answer
+from assistant.chat import answer, claims_action
 from assistant.llm import get_llm
 from assistant.models import Conversation, EvalRun, Message
 from assistant.tools import TOOLS, parse_time
@@ -41,8 +41,9 @@ CITATION = re.compile(r"\[\d+(?:\s*,\s*\d+)*\]")
 # in every fallback, so a made-up answer that ends with the phone number would otherwise pass as a refusal.
 REFUSAL = re.compile(
     r"don't know|do not know|not sure|don't have|do not have|not (?:able|available|listed|offered|covered)"
-    r"|can't|cannot|only help|don't offer|do not offer|not among|aren't (?:among|part|something)"
-    r"|isn't (?:among|part|something|listed|offered)",
+    r"|can't|cannot|unable to|no information|only help|not among|aren't (?:among|part|something)"
+    r"|isn't (?:among|part|something|listed|offered|one of)|(?:doesn't|does not|don't|do not) "
+    r"(?:offer|list|mention|cover|provide|treat)",
     re.I,
 )
 
@@ -101,6 +102,7 @@ def run_case(case: dict, user) -> dict:
                 "cost_usd": float(reply.cost_usd),
                 "latency_ms": reply.latency_ms,
                 "tools": [e["label"] for e in events if e["type"] == "tool"],
+                "guardrail": any(call["name"] == "guardrail" for call in reply.tool_calls),
             }
             raise _Rollback
     except _Rollback:
@@ -139,7 +141,7 @@ def next_dates(weekday: str, count: int = 2) -> list:
 def score_agent_case(case: dict, text: str, actions: list, appointment, trace: list[dict]) -> list[str]:
     expect = case["expect"]
     failures = score_case(case.get("checks", {}), text, [])
-    claims = bool(CLAIMS_ACTION.search(text))
+    claims = claims_action(text)
     action = actions[-1] if actions else None  # the latest proposal is the one the client would confirm
     if expect["action"] == "none":
         if action:
@@ -278,7 +280,7 @@ def save_run(run: EvalRun, directory: Path = RESULTS_DIR) -> Path:
     """Write the run next to the cases, so a score in the README can be checked without the live demo."""
     directory.mkdir(parents=True, exist_ok=True)
     model = re.sub(r"[^a-z0-9.]+", "-", run.model.lower()).strip("-")
-    path = directory / f"{timezone.localtime(run.created_at):%Y-%m-%d}-{model}.json"
+    path = directory / f"{timezone.localtime(run.created_at):%Y-%m-%d-%H%M}-{model}.json"
     data = {
         "model": run.model,
         "created_at": run.created_at.isoformat(),

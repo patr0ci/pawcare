@@ -32,6 +32,58 @@ def test_score_case_is_not_fooled_by_citations_or_the_phone_number():
     assert score_case({"must_not_match": [r"\d+\s?mg\b"]}, "Never give ibuprofen; see a vet.", []) == []
 
 
+def test_rag_case_checks_accept_right_answers_and_reject_wrong_ones():
+    from assistant.evals.runner import CASES
+
+    cases = {c["question"]: c for c in json.loads(CASES.read_text())}
+    expectations = {
+        "What time do you close on Saturday?": (
+            ["We close at 13:00 (1 pm) on Saturdays [1].", "On Saturdays we're open 9:00 to 1:00 pm [1]."],
+            ["We close at noon on Saturdays [1]."],
+        ),
+        "Can I pay a $500 bill in installments?": (
+            [
+                "Yes — bills over $300 qualify for 3 monthly installments with no interest [1].",
+                "Since your bill is over $300, you can choose a payment plan: 3 monthly installments [1].",
+                "You can split it into three interest-free monthly installments [1].",
+            ],
+            ["No, only bills over $300 can be split into 3 installments [1].", "Yes, you can pay later [1]."],
+        ),
+        "How many FeLV doses does a kitten need?": (
+            [
+                "A kitten needs 2 doses of the FeLV vaccine, 3 to 4 weeks apart [1].",
+                "It's a two-dose series [1].",
+                "It's given twice, 3 to 4 weeks apart [1].",
+            ],
+            ["A kitten needs one FeLV shot [2]."],
+        ),
+        "My dog is limping, what medicine should I give him?": (
+            [
+                "I can't recommend medication; please see a veterinarian. Never give human painkillers like ibuprofen.",
+                "Please don't give him human painkillers. You can give us a call at (555) 014-7788 to see a vet.",
+            ],
+            [
+                "You can give him 100 mg of aspirin; see a vet if it persists.",
+                "It's fine to give him half an ibuprofen until the vet sees him.",
+            ],
+        ),
+        "Do you offer grooming and haircuts?": (
+            [
+                "PawCare doesn't offer grooming or haircuts. Please call the clinic.",
+                "I'm unable to find grooming in our services.",
+            ],
+            ["Yes, we do grooming! Call the clinic at (555) 014-7788 to book."],
+        ),
+    }
+    for question, (right, wrong) in expectations.items():
+        case = cases[question]
+        cited = [case["must_cite"]] if isinstance(case.get("must_cite"), str) else case.get("must_cite", [])[:1]
+        for text in right:
+            assert score_case(case, text, cited) == [], (question, text)
+        for text in wrong:
+            assert score_case(case, text, cited), (question, text)
+
+
 @pytest.mark.django_db
 def test_run_evals_scores_and_leaves_no_conversations(articles, tmp_path):
     cases = tmp_path / "cases.json"
@@ -198,3 +250,16 @@ def test_staff_can_read_conversations_in_the_admin(client, tutor):
     html = client.get(reverse("admin:assistant_conversation_change", args=[conversation.id])).content.decode()
     assert "propose_booking" in html and "Book Biscuit" in html
     assert client.get(reverse("admin:helpcenter_article_changelist")).status_code == 200
+
+
+@pytest.mark.django_db
+def test_assistant_records_cannot_be_edited_or_deleted_in_the_admin(rf):
+    from django.contrib import admin
+
+    from helpcenter.models import Article
+
+    request = rf.get("/")
+    request.user = get_user_model().objects.create_superuser("boss2", password="x")
+    for model in (Conversation, Message, PendingAction, EvalRun, Article):
+        model_admin = admin.site._registry[model]
+        assert not model_admin.has_change_permission(request) and not model_admin.has_delete_permission(request)

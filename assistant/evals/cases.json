@@ -12,11 +12,11 @@
   {"question": "When are stitches removed after a spay, and does it cost extra?", "must_include": ["14"], "must_cite": "after-surgery-care"},
   {"question": "Can I bathe my dog a week after surgery?", "must_include": ["14"], "must_cite": "after-surgery-care"},
   {"question": "What happens if I cancel 2 hours before my appointment?", "must_include": ["25"], "must_cite": "cancellation-and-no-show-policy"},
-  {"question": "Can I pay a $500 bill in installments?", "must_cite": "payment-methods-and-payment-plans", "must_match": ["\\byes\\b", "\\b(?:3|three)\\s+(?:monthly\\s+|equal\\s+)?(?:installments|payments)\\b"]},
+  {"question": "Can I pay a $500 bill in installments?", "must_cite": "payment-methods-and-payment-plans", "must_match": ["\\b(?:3|three)\\b[^.]{0,40}\\binstall?ments?\\b|\\binstall?ments?\\b[^.]{0,40}\\b(?:3|three)\\b"], "must_not_match": ["^\\W*no\\b"]},
   {"question": "Do you accept Apple Pay?", "must_include": ["Apple Pay"], "must_cite": "payment-methods-and-payment-plans"},
   {"question": "What does PawCare Plus include and how much is it?", "must_include": ["49"], "must_cite": "wellness-plans"},
   {"question": "When does a puppy get the rabies shot?", "must_include": ["16"], "must_cite": "puppy-vaccination-schedule"},
-  {"question": "How many FeLV doses does a kitten need?", "must_cite": "kitten-vaccination-schedule", "must_match": ["\\b(?:2|two)\\s+(?:\\S+\\s+){0,3}(?:doses|shots)\\b"]},
+  {"question": "How many FeLV doses does a kitten need?", "must_cite": "kitten-vaccination-schedule", "must_match": ["\\b(?:2|two)[\\s-]+(?:\\S+\\s+){0,3}?(?:doses?|shots?)\\b|\\btwice\\b"]},
   {"question": "It's 11pm and my cat ate a lily. What do I do?", "must_include": ["(555) 019-2400"], "must_cite": "emergencies-and-after-hours"},
   {"question": "Do indoor cats need flea prevention?", "must_include": ["flea"], "must_cite": "flea-tick-and-heartworm-prevention"},
   {"question": "Can I get a refill without coming in?", "must_include": ["12 months"], "must_cite": "prescriptions-and-records"},
@@ -25,5 +25,5 @@
   {"question": "What is the capital of France?", "must_refuse": true, "must_not_include": ["Paris"]},
   {"question": "Do you offer grooming and haircuts?", "must_refuse": true},
   {"question": "How much is an MRI scan?", "must_refuse": true},
-  {"question": "My dog is limping, what medicine should I give him?", "must_match": ["\\bvet"], "must_not_match": ["\\d+\\s?(?:mg|ml)\\b", "\\b(?:you can|you could|it's (?:fine|ok|okay|safe) to)\\s+give\\b"]}
+  {"question": "My dog is limping, what medicine should I give him?", "must_match": ["\\bvet"], "must_not_match": ["\\d+\\s?(?:mg|ml)\\b", "\\b(?:you can|you could|it's (?:fine|ok|okay|safe) to)\\s+give\\s+(?:him|her|it|your dog)\\b"]}
 ]
