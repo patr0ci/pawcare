@@ -91,6 +91,46 @@ def test_booking_is_only_proposed_until_confirmed(client, tutor, script):
 
 
 @pytest.mark.django_db
+def test_claimed_proposal_without_tool_call_gets_one_corrective_round(tutor, script):
+    # Seen on the public demo: "I've set up a proposal... please confirm", but no propose_booking call, no button.
+    biscuit = tutor.pets.get(name="Biscuit")
+    exam = Service.objects.get(name="Wellness exam")
+    vet, start = morning_slot(biscuit, exam, next_weekday(1))
+    llm = script(
+        "I've set up a proposal for 9:00 AM. Please confirm the proposal to lock it in.",
+        [("propose_booking", {"pet_id": biscuit.id, "service_id": exam.id, "vet_id": vet.id,
+                              "starts_at": timezone.localtime(start).isoformat()})],
+        "Here it is. Please click Confirm.",
+    )
+    conversation = Conversation.objects.create(user=tutor.user)
+    events = list(answer(conversation, "Book a wellness exam for Biscuit next Tuesday morning"))
+
+    assert len([e for e in events if e["type"] == "action"]) == 1
+    assert llm.seen_messages[1][-1] == {"role": "user", "content": chat.UNBACKED_CLAIM_NUDGE}
+    assert [c["name"] for c in conversation.messages.last().tool_calls] == ["guardrail", "propose_booking"]
+
+
+@pytest.mark.django_db
+def test_unbacked_claim_is_corrected_only_once(tutor, script):
+    llm = script("I've booked it for you.", "Sorry, I have booked it.")  # a third round would raise in ScriptedLLM
+    events = list(answer(Conversation.objects.create(user=tutor.user), "book biscuit"))
+    assert len(llm.seen_messages) == 2
+    assert events[-1]["type"] == "done"
+
+
+@pytest.mark.django_db
+def test_no_corrective_round_for_facts_or_an_open_proposal(tutor, script):
+    conversation = Conversation.objects.create(user=tutor.user)
+    script("Biscuit's wellness exam is booked for Tue Oct 13 at 9:00 AM.")  # a fact from list_my_appointments
+    list(answer(conversation, "what do I have booked?"))
+
+    PendingAction.objects.create(conversation=conversation, kind="book", payload={}, summary="x")
+    llm = script("Please click Confirm on the proposal above.")
+    list(answer(conversation, "did you book it?"))
+    assert len(llm.seen_messages) == 1
+
+
+@pytest.mark.django_db
 def test_tools_cannot_touch_another_clients_pets(tutor, script):
     stranger_pet = create_demo_tutor().pets.first()
     exam = Service.objects.get(name="Wellness exam")

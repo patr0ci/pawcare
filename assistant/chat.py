@@ -13,13 +13,29 @@ from django.conf import settings
 from django.utils import timezone
 
 from .llm import Delta, Done, Usage, get_llm
-from .models import Conversation, Message
+from .models import Conversation, Message, PendingAction
 from .retrieval import Source, retrieve
 from .tools import STATUS_LABELS, TOOLS, ToolRunner
 
 HISTORY_TURNS = 6
 MAX_TOOL_ROUNDS = 6
 ANSWER_DEADLINE_S = 90  # no new LLM round starts after this; each call also has its own timeout
+
+# Seen on the public demo: the model wrote "I've set up a proposal, please confirm" without calling propose_booking,
+# so there was no Confirm button. A reply that claims an action needs a proposal behind it; if there is none,
+# the model gets one corrective round.
+# First-person claims only: "your exam is booked for Tuesday" is a fact when it comes from list_my_appointments.
+CLAIMS_ACTION = re.compile(
+    r"\bproposal\b|\b(?:click|tap|press)\s+(?:the\s+)?confirm\b|\bconfirm button\b"
+    r"|\bi(?:'ve| have)(?:\s+just)?\s+(?:booked|cancell?ed|rescheduled|moved|set up|prepared|proposed)\b"
+    r"|\bproposta\b|\bclique em confirmar\b",  # the assistant answers in the client's language
+    re.I,
+)
+UNBACKED_CLAIM_NUDGE = (
+    "Automatic check (not from the client): your last reply talks about a booking, change or cancellation, but no "
+    "propose_* tool was called, so the client has no Confirm button. If you have what you need, call the right "
+    "propose_* tool now. Otherwise, correct your reply: ask for what's missing, and don't say anything is proposed or done."
+)
 
 SYSTEM_PROMPT = """You are the virtual assistant of PawCare Veterinary Clinic.
 Today is {today} (clinic time zone). Upcoming dates: {calendar}.
@@ -31,8 +47,10 @@ For the client's own pets and appointments, use the tools:
 - Resolve relative dates ("next Tuesday", "tomorrow") with the calendar above and always say the exact date you
   picked (e.g. "Thursday, Oct 15"). If the client gave a day
   (and maybe "morning"/"afternoon"), search right away and offer the earliest matching times; don't ask again.
-- To book, reschedule or cancel: find a real free slot when needed, then call the matching propose_* tool.
-  A proposal is NOT done until the client clicks Confirm, so say "please confirm", never "booked" or "cancelled".
+- To book, reschedule or cancel: find a real free slot when needed, then call the matching propose_* tool in the
+  same turn. Only the tool creates the Confirm button: never say you've set up a proposal unless it returned
+  "awaiting_client_confirmation". A proposal is NOT done until the client clicks Confirm, so say "please confirm",
+  never "booked" or "cancelled".
 - If a tool returns an error, fix the call (e.g. look the id up) and retry once before giving up.
 - Only ask a question when the pet or service is genuinely ambiguous.
 
@@ -55,6 +73,14 @@ Sources:
 def cited_numbers(text: str) -> set[int]:
     """Numbers inside citation brackets: "[1]", "[2, 3]", "[1][4]"."""
     return {int(n) for group in re.findall(r"\[(\d+(?:\s*,\s*\d+)*)\]", text) for n in re.findall(r"\d+", group)}
+
+
+def is_unbacked_claim(conversation: Conversation, runner: ToolRunner, text: str) -> bool:
+    """The reply talks about a proposal or a done change, but nothing was proposed this turn and no earlier
+    proposal is still waiting for the client (pointing back at one of those is fine)."""
+    if runner.proposed or not CLAIMS_ACTION.search(text):
+        return False
+    return not conversation.actions.filter(status=PendingAction.Status.PENDING).exists()
 
 
 def upcoming_calendar(days: int = 14) -> str:
@@ -112,9 +138,9 @@ def answer(conversation: Conversation, question: str) -> Iterator[dict]:
 
     runner = ToolRunner(conversation)
     usage, model, parts, trace = Usage(), "", [], []
-    reply = None
+    reply, nudged = None, False
     try:
-        for _ in range(MAX_TOOL_ROUNDS):
+        for round_no in range(MAX_TOOL_ROUNDS):
             if time.monotonic() - started > ANSWER_DEADLINE_S:
                 parts.append("\n\nSorry, this is taking too long. Please try again or call us at (555) 014-7788.")
                 yield {"type": "delta", "text": parts[-1]}
@@ -135,7 +161,14 @@ def answer(conversation: Conversation, question: str) -> Iterator[dict]:
             )
             model = done.model
             if not done.tool_calls:
-                break
+                round_text = "".join(parts[round_start:])
+                if nudged or round_no == MAX_TOOL_ROUNDS - 1 or not is_unbacked_claim(conversation, runner, round_text):
+                    break
+                nudged = True
+                trace.append({"name": "guardrail", "arguments": "{}", "result": {"unbacked_claim": round_text[:300]}})
+                messages.append({"role": "assistant", "content": round_text})
+                messages.append({"role": "user", "content": UNBACKED_CLAIM_NUDGE})
+                continue
             messages.append(
                 {
                     "role": "assistant",
