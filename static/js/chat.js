@@ -1,7 +1,11 @@
 // Streams the assistant's answer over SSE (fetch + ReadableStream; EventSource can't POST).
 const form = document.getElementById("composer");
 const input = document.getElementById("message");
+const sendButton = form.querySelector("button[type=submit]");
 const log = document.getElementById("log");
+
+// The newest item, kept clear of the sticky composer by scroll-margin-bottom (app.css).
+const scrollToEnd = () => log.lastElementChild?.scrollIntoView({ block: "end" });
 
 function bubble(role, text = "") {
   log.querySelector(".empty")?.remove();
@@ -78,6 +82,7 @@ function actionCard(action, waiting = false) {
 }
 
 document.querySelectorAll("[data-action]").forEach((el) => el.replaceWith(actionCard(JSON.parse(el.dataset.action))));
+if (!log.querySelector(".empty")) scrollToEnd(); // a reloaded conversation opens at its latest message
 
 function renderSources(el, sources) {
   if (!sources.length) return;
@@ -104,7 +109,7 @@ async function send(question) {
   reply.prepend(status);
   text.classList.add("typing");
   input.value = "";
-  input.disabled = true;
+  input.disabled = sendButton.disabled = true; // one answer at a time
 
   let sources = [];
   let left;
@@ -139,14 +144,14 @@ async function send(question) {
         if (!raw.startsWith("data: ")) continue;
         const event = JSON.parse(raw.slice(6));
         if (event.type === "sources") sources = event.sources;
-        if (event.type === "delta") { status.textContent = ""; text.textContent += event.text; reply.scrollIntoView({ block: "end" }); }
+        if (event.type === "delta") { status.textContent = ""; text.textContent += event.text; scrollToEnd(); }
         if (event.type === "tool") status.textContent = `${event.label}…`;
         if (event.type === "action") {
           const card = actionCard(event, true);
           // Next to the reply, not inside it: where a reload puts it (after this turn's earlier cards).
           (proposed.at(-1) || reply).after(card);
           proposed.push(card);
-          card.scrollIntoView({ block: "end" });
+          scrollToEnd();
         }
         if (event.type === "error") {
           text.textContent = event.message;
@@ -161,6 +166,7 @@ async function send(question) {
           meta.textContent = `${event.model} · ${event.tokens} tokens · $${event.cost_usd.toFixed(5)} · ${event.latency_ms} ms`;
           reply.append(meta);
           setRemaining(event.remaining);
+          scrollToEnd(); // sources and meta made the reply taller: keep them out from under the composer
         }
       }
     }
@@ -172,7 +178,7 @@ async function send(question) {
     status.remove();
     const outOfMessages = left === 0;
     input.disabled = outOfMessages;
-    form.querySelector("button[type=submit]").disabled = outOfMessages;
+    sendButton.disabled = outOfMessages;
     if (!outOfMessages) input.focus();
     // After done or error the reply is saved; a stream that just dropped has nothing left to wait for either.
     proposed.forEach((card) => card.querySelectorAll("button").forEach((b) => (b.disabled = false)));
