@@ -1,7 +1,9 @@
 """Regression tests for the second QA round (site: pages, admin, help center, booking policy, settings)."""
 
+import runpy
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 from django.core.management import call_command
@@ -297,3 +299,23 @@ def test_my_pets_after_a_cancellation_says_no_upcoming_appointments(client, tuto
     client.force_login(tutor.user)
     html = client.get(reverse("my_pets")).content.decode()
     assert "No upcoming appointments." in html and reverse("assistant:chat") in html
+
+
+def load_settings(monkeypatch, **env):
+    """Run config/settings.py afresh with these environment variables (the live settings are untouched)."""
+    for name, value in env.items():
+        monkeypatch.setenv(name, value)
+    return runpy.run_path(str(Path(__file__).resolve().parent.parent / "config" / "settings.py"))
+
+
+def test_csrf_trusted_origins_without_a_scheme_get_https(monkeypatch):
+    # docker-compose builds it as https://${DOMAIN}; a DOMAIN with two hosts leaves the second bare.
+    origins = load_settings(monkeypatch, DJANGO_CSRF_TRUSTED_ORIGINS="https://a.com,www.a.com, http://localhost:8000")
+    assert origins["CSRF_TRUSTED_ORIGINS"] == ["https://a.com", "https://www.a.com", "http://localhost:8000"]
+
+
+@pytest.mark.parametrize("key", ["dev-only-insecure-key", "change-me"])
+def test_production_refuses_a_public_secret_key(monkeypatch, key):
+    with pytest.raises(RuntimeError, match="DJANGO_SECRET_KEY"):
+        load_settings(monkeypatch, DJANGO_DEBUG="false", DJANGO_SECRET_KEY=key)
+    assert load_settings(monkeypatch, DJANGO_DEBUG="false", DJANGO_SECRET_KEY="s3cret-from-the-env")["DEBUG"] is False
