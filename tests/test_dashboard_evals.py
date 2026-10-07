@@ -130,3 +130,18 @@ def test_agent_eval_scores_the_proposal_and_leaves_nothing_behind(clinic, tmp_pa
 
     saved = json.loads(save_run(run, tmp_path / "results").read_text())
     assert saved["meta"]["repeat"] == 2 and saved["results"][0]["suite"] == "agent"
+
+
+@pytest.mark.django_db
+def test_staff_can_read_conversations_in_the_admin(client, tutor):
+    conversation = Conversation.objects.create(user=tutor.user)
+    Message.objects.create(conversation=conversation, role="assistant", content="Biscuit is booked", model="m",
+                           tool_calls=[{"name": "propose_booking", "arguments": "{}", "result": {}}])
+    PendingAction.objects.create(conversation=conversation, kind="book", payload={}, summary="Book Biscuit")
+    EvalRun.objects.create(model="m", total=1, passed=1)
+    client.force_login(get_user_model().objects.create_superuser("boss", password="x"))
+    for name in ["conversation", "message", "pendingaction", "evalrun"]:
+        assert client.get(reverse(f"admin:assistant_{name}_changelist")).status_code == 200
+    html = client.get(reverse("admin:assistant_conversation_change", args=[conversation.id])).content.decode()
+    assert "propose_booking" in html and "Book Biscuit" in html
+    assert client.get(reverse("admin:helpcenter_article_changelist")).status_code == 200

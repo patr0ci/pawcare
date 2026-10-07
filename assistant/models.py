@@ -14,6 +14,9 @@ class Conversation(models.Model):
     class Meta:
         ordering = ["-created_at"]
 
+    def __str__(self):
+        return f"Conversation {self.id}"
+
 
 class MessageQuerySet(models.QuerySet):
     def today_for(self, user):
@@ -21,13 +24,6 @@ class MessageQuerySet(models.QuerySet):
 
     def spent_today_usd(self) -> float:
         return float(self.filter(created_at__date=timezone.localdate()).aggregate(c=Sum("cost_usd"))["c"] or 0)
-
-    def totals(self):
-        return self.aggregate(
-            prompt_tokens=Sum("prompt_tokens"),
-            completion_tokens=Sum("completion_tokens"),
-            cost_usd=Sum("cost_usd"),
-        )
 
 
 class Message(models.Model):
