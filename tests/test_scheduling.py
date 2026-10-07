@@ -1,9 +1,11 @@
 from datetime import date, datetime, timedelta
 
 import pytest
+from django.contrib.auth import get_user_model
+from django.core.management import call_command
 from django.utils import timezone
 
-from clinic.models import Appointment, Service, Vet, available_slots
+from clinic.models import Appointment, Pet, Service, Tutor, Vet, available_slots
 
 
 def next_weekday(weekday: int) -> date:
@@ -74,3 +76,21 @@ def test_same_day_afternoon_booking_proposal_is_accepted(clinic, tutor):
     assert late.endswith("17:30") or "T17:30" in late
     result = runner.tool_propose_booking(biscuit.id, exam.id, chen["vet_id"], late)
     assert result["status"] == "awaiting_client_confirmation"
+
+
+
+@pytest.mark.django_db
+def test_cleanup_frees_slots_booked_by_demo_accounts(tutor):
+    exam, chen = Service.objects.get(name="Wellness exam"), Vet.objects.get(name="Dr. Maya Chen")
+    biscuit = tutor.pets.get(name="Biscuit")
+    day = timezone.make_aware(datetime.combine(next_weekday(1), datetime.min.time()))
+    old = Appointment.objects.create(pet=biscuit, vet=chen, service=exam, starts_at=day.replace(hour=9))
+    fresh = Appointment.objects.create(pet=biscuit, vet=chen, service=exam, starts_at=day.replace(hour=10))
+    Appointment.objects.filter(id=old.id).update(created_at=timezone.now() - timedelta(hours=3))
+    client = Tutor.objects.create(user=get_user_model().objects.create_user("real-client"))
+    rex = Pet.objects.create(tutor=client, name="Rex", species=Pet.Species.DOG)
+    real = Appointment.objects.create(pet=rex, vet=chen, service=exam, starts_at=day.replace(hour=11))
+    Appointment.objects.filter(id=real.id).update(created_at=timezone.now() - timedelta(days=30))
+
+    call_command("cleanup_demo_users", appointment_hours=2)
+    assert set(Appointment.objects.values_list("id", flat=True)) == {fresh.id, real.id}
