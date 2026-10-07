@@ -23,7 +23,9 @@ class Tutor(models.Model):
     phone = models.CharField(max_length=30, blank=True)
 
     def __str__(self):
-        return self.user.get_full_name() or self.user.username
+        # Every demo account is "Demo Visitor": the username is what tells two tutors apart in the admin.
+        name = self.user.get_full_name()
+        return f"{name} ({self.user.username})" if name else self.user.username
 
 
 class Pet(models.Model):
@@ -95,7 +97,7 @@ class Appointment(models.Model):
         ordering = ["starts_at"]
 
     def __str__(self):
-        return f"{self.pet} · {self.service} · {self.starts_at:%Y-%m-%d %H:%M}"
+        return f"{self.pet} · {self.service} · {timezone.localtime(self.starts_at):%Y-%m-%d %H:%M}"  # clinic time
 
     @property
     def ends_at(self):

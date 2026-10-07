@@ -1,7 +1,23 @@
 """Regression tests for the second QA round (site: pages, admin, help center, booking policy, settings)."""
 
+from datetime import UTC, datetime, timedelta
+from decimal import Decimal
+
 import pytest
+from django.core.management import call_command
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
+from django.utils import timezone
+
+import helpcenter.ingest
+from clinic.demo import create_demo_tutor
+from clinic.models import Appointment, Service, Vet
+from clinic.services import late_change_fee
+from helpcenter.ingest import ingest_directory
+from helpcenter.models import Article
+from tests.test_qa_fixes import at
+from tests.test_scheduling import next_weekday
 
 
 @pytest.mark.django_db
@@ -26,8 +42,6 @@ def write_article(directory, name, title="Good", body="Body"):
 @pytest.mark.django_db
 @pytest.mark.parametrize("name", ["x" * 51, "has space", "dotted.name", "café"])
 def test_file_names_that_cant_be_slugs_are_skipped_not_fatal(client, tmp_path, name):
-    from helpcenter.ingest import ingest_directory
-
     write_article(tmp_path, "good")
     write_article(tmp_path, name, title="Bad name")
     stats = ingest_directory(tmp_path)
@@ -37,9 +51,6 @@ def test_file_names_that_cant_be_slugs_are_skipped_not_fatal(client, tmp_path, n
 
 @pytest.mark.django_db
 def test_an_article_left_with_a_bad_slug_is_removed(client, tmp_path):
-    from helpcenter.ingest import ingest_directory
-    from helpcenter.models import Article
-
     Article.objects.create(slug="dotted.name", title="Old", category="X", body="Old")  # from an older ingest
     write_article(tmp_path, "dotted.name")
     assert ingest_directory(tmp_path)["deleted"] == 1
@@ -48,18 +59,12 @@ def test_an_article_left_with_a_bad_slug_is_removed(client, tmp_path):
 
 @pytest.mark.django_db
 def test_a_title_too_long_for_its_column_is_skipped(tmp_path):
-    from helpcenter.ingest import ingest_directory
-
     write_article(tmp_path, "long-title", title="t" * 201)
     assert ingest_directory(tmp_path)["errors"] == 1
 
 
 @pytest.mark.django_db
 def test_an_interrupted_update_leaves_the_old_text_and_chunks_together(tmp_path, monkeypatch):
-    import helpcenter.ingest
-    from helpcenter.ingest import ingest_directory
-    from helpcenter.models import Article
-
     write_article(tmp_path, "fees", body="Late fee is $25.")
     ingest_directory(tmp_path)
     write_article(tmp_path, "fees", body="Late fee is $30.")
@@ -80,8 +85,6 @@ def test_an_interrupted_update_leaves_the_old_text_and_chunks_together(tmp_path,
 
 @pytest.mark.django_db
 def test_cross_references_link_titles_with_ampersands_and_apostrophes(client):
-    from helpcenter.models import Article
-
     Article.objects.create(slug="fleas-ticks", title="Fleas & Ticks", category="V", body="x")
     Article.objects.create(slug="whats-covered", title="What's Covered", category="V", body="x")
     Article.objects.create(
@@ -98,12 +101,6 @@ def test_cross_references_link_titles_with_ampersands_and_apostrophes(client):
 
 @pytest.mark.django_db
 def test_seed_on_boot_keeps_admin_edits_and_force_resyncs(clinic):
-    from decimal import Decimal
-
-    from django.core.management import call_command
-
-    from clinic.models import Service, Vet
-
     Service.objects.filter(name="Nail trim").update(price_usd=Decimal("22.00"), duration_minutes=20)
     Vet.objects.filter(name="Dr. Maya Chen").update(name="Dr. Maya Chen-Park")
     call_command("seed_clinic")  # what every boot runs
@@ -118,10 +115,6 @@ def test_seed_on_boot_keeps_admin_edits_and_force_resyncs(clinic):
 
 @pytest.mark.django_db
 def test_seed_fills_an_empty_clinic():
-    from django.core.management import call_command
-
-    from clinic.models import Service, Vet
-
     call_command("seed_clinic")
     assert Vet.objects.count() == 3 and Service.objects.count() == 7
     assert Vet.objects.get(name="Dr. Rafael Souza").services.filter(name="Dental cleaning").exists()
@@ -129,10 +122,6 @@ def test_seed_fills_an_empty_clinic():
 
 def local(day, hour, minute=0):
     """A time at the clinic in the week of Monday 2030-01-07."""
-    from datetime import datetime
-
-    from django.utils import timezone
-
     return timezone.make_aware(datetime(2030, 1, day, hour, minute))
 
 
@@ -152,15 +141,109 @@ def local(day, hour, minute=0):
     ],
 )
 def test_late_change_fee_follows_the_published_policy(requested, starts_at, fee):
-    from clinic.models import Appointment
-    from clinic.services import late_change_fee
-
     assert late_change_fee(Appointment(starts_at=starts_at), now=requested) == fee
 
 
 def test_completed_visits_never_have_a_late_change_fee():
-    from clinic.models import Appointment
-    from clinic.services import late_change_fee
-
     done = Appointment(starts_at=local(7, 10), status=Appointment.Status.COMPLETED)
     assert late_change_fee(done, now=local(7, 9)) == 0
+
+
+@pytest.mark.django_db
+def test_tutors_are_told_apart_by_username(tutor):
+    assert str(tutor) == f"Demo Visitor ({tutor.user.username})"
+
+
+@pytest.mark.django_db
+def test_admin_lists_are_searchable_by_username_without_a_query_per_row(admin_client, clinic):
+    def queries(url):
+        with CaptureQueriesContext(connection) as captured:
+            assert admin_client.get(url).status_code == 200
+        return len(captured)
+
+    first = create_demo_tutor()
+    Appointment.objects.create(
+        pet=first.pets.first(), vet=Vet.objects.first(), service=Service.objects.first(), starts_at=timezone.now()
+    )
+    urls = [reverse(f"admin:clinic_{model}_changelist") for model in ("tutor", "pet", "appointment")]
+    before = [queries(url) for url in urls]
+    for _ in range(4):
+        tutor = create_demo_tutor()
+        Appointment.objects.create(
+            pet=tutor.pets.first(), vet=Vet.objects.first(), service=Service.objects.first(), starts_at=timezone.now()
+        )
+    assert [queries(url) for url in urls] == before
+
+    assert "1 result" in admin_client.get(urls[0], {"q": first.user.username}).content.decode()
+    html = admin_client.get(urls[1], {"q": first.user.username}).content.decode()
+    assert "2 results" in html and first.user.username in html
+
+
+@pytest.mark.django_db
+def test_tutor_page_cant_delete_pets_or_overflow_with_allergies(admin_client, tutor):
+    html = admin_client.get(reverse("admin:clinic_tutor_change", args=[tutor.id])).content.decode()
+    assert 'name="pets-0-name"' in html
+    assert 'name="pets-0-DELETE"' not in html and 'name="pets-0-allergies"' not in html
+
+
+def admin_form(pet, vet, service, starts_at, **extra):
+    when = timezone.localtime(starts_at)
+    return {
+        "pet": pet.id,
+        "vet": vet.id,
+        "service": service.id,
+        "starts_at_0": when.strftime("%Y-%m-%d"),
+        "starts_at_1": when.strftime("%H:%M"),
+        "status": "scheduled",
+        "notes": "",
+        "cancellation_reason": "",
+        **extra,
+    }
+
+
+@pytest.mark.django_db
+def test_admin_bookings_follow_the_booking_rules(admin_client, tutor):
+    biscuit, miso = tutor.pets.get(name="Biscuit"), tutor.pets.get(name="Miso")
+    exam, chen = Service.objects.get(name="Wellness exam"), Vet.objects.get(name="Dr. Maya Chen")
+    day = next_weekday(2)
+    add = reverse("admin:clinic_appointment_add")
+
+    assert admin_client.post(add, admin_form(biscuit, chen, exam, at(day, 10))).status_code == 302
+    html = admin_client.post(add, admin_form(miso, chen, exam, at(day, 10))).content.decode()  # vet already busy
+    assert "no longer available" in html
+    html = admin_client.post(add, admin_form(miso, Vet.objects.get(name="Dr. Rafael Souza"), exam, at(day, 11)))
+    assert "doesn&#x27;t do wellness exam" in html.content.decode()
+    html = admin_client.post(add, admin_form(miso, chen, exam, at(next_weekday(6), 10))).content.decode()  # Sunday
+    assert "no longer available" in html
+    assert Appointment.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_admin_checks_a_revived_visit_but_not_notes_on_a_past_one(admin_client, tutor):
+    biscuit, miso = tutor.pets.get(name="Biscuit"), tutor.pets.get(name="Miso")
+    exam, chen = Service.objects.get(name="Wellness exam"), Vet.objects.get(name="Dr. Maya Chen")
+    eleven = at(next_weekday(2), 11)
+    cancelled = Appointment.objects.create(
+        pet=miso, vet=chen, service=exam, starts_at=eleven, status=Appointment.Status.CANCELLED
+    )
+    Appointment.objects.create(pet=biscuit, vet=chen, service=exam, starts_at=eleven)  # took the freed slot
+    change = reverse("admin:clinic_appointment_change", args=[cancelled.id])
+    assert "no longer available" in admin_client.post(change, admin_form(miso, chen, exam, eleven)).content.decode()
+
+    past = Appointment.objects.create(pet=miso, vet=chen, service=exam, starts_at=timezone.now() - timedelta(days=2))
+    change = reverse("admin:clinic_appointment_change", args=[past.id])
+    data = admin_form(miso, chen, exam, past.starts_at, status="completed", notes="All good.")
+    assert admin_client.post(change, data).status_code == 302
+    past.refresh_from_db()
+    assert (past.status, past.notes) == ("completed", "All good.")
+
+
+@pytest.mark.django_db
+def test_appointment_str_uses_clinic_time(tutor):
+    appointment = Appointment(
+        pet=tutor.pets.get(name="Biscuit"),
+        vet=Vet.objects.first(),
+        service=Service.objects.get(name="Nail trim"),
+        starts_at=datetime(2030, 1, 8, 15, 0, tzinfo=UTC),  # 10:00 in New York
+    )
+    assert str(appointment).endswith("2030-01-08 10:00")
