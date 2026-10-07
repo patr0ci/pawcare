@@ -26,7 +26,9 @@ class Command(BaseCommand):
             created_at__lt=now - timedelta(hours=options["appointment_hours"]),
         )
         appointments, _ = booked.delete()
-        old = get_user_model().objects.filter(username__startswith="demo-", date_joined__lt=now - timedelta(days=options["days"]))
+        old = get_user_model().objects.filter(
+            username__startswith="demo-", date_joined__lt=now - timedelta(days=options["days"])
+        )
         count = old.count()
         old.delete()
         self.stdout.write(

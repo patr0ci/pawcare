@@ -172,7 +172,9 @@ class ToolRunner:
         slots = services.find_slots(pet, service, day)
         by_vet: dict[int, dict] = {}
         for vet, start in slots:
-            entry = by_vet.setdefault(vet.id, {"vet_id": vet.id, "vet": vet.name, "specialty": vet.specialty, "starts_at": []})
+            entry = by_vet.setdefault(
+                vet.id, {"vet_id": vet.id, "vet": vet.name, "specialty": vet.specialty, "starts_at": []}
+            )
             entry["starts_at"].append(timezone.localtime(start).isoformat(timespec="minutes"))
         if slots:
             note = ""
@@ -198,7 +200,9 @@ class ToolRunner:
     # --- writes: propose only --------------------------------------------------
     def _propose(self, kind: str, payload: dict, summary: str) -> dict:
         action = PendingAction.objects.create(
-            conversation=self.conversation, kind=kind, payload=payload,
+            conversation=self.conversation,
+            kind=kind,
+            payload=payload,
             summary=Truncator(summary).chars(PendingAction.SUMMARY_MAX),
         )
         self.proposed.append(action)

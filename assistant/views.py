@@ -41,7 +41,9 @@ def timeline(conversation: Conversation) -> list[dict]:
     items = [{"kind": "message", "at": m.created_at, "obj": m} for m in messages]
     for action in conversation.actions.all():
         # A card belongs under the reply of the turn that proposed it (the reply is saved when the turn ends).
-        reply = next((m for m in messages if m.role == Message.Role.ASSISTANT and m.created_at >= action.created_at), None)
+        reply = next(
+            (m for m in messages if m.role == Message.Role.ASSISTANT and m.created_at >= action.created_at), None
+        )
         items.append({"kind": "action", "at": reply.created_at if reply else action.created_at, "obj": action})
     return sorted(items, key=lambda i: (i["at"], i["kind"] == "action"))
 
@@ -165,11 +167,16 @@ def dashboard(request):
         latency=Avg("latency_ms"),
     )
     daily = list(
-        replies.annotate(day=TruncDate("created_at")).values("day").annotate(answers=Count("id"), cost=Sum("cost_usd")).order_by("day")
+        replies.annotate(day=TruncDate("created_at"))
+        .values("day")
+        .annotate(answers=Count("id"), cost=Sum("cost_usd"))
+        .order_by("day")
     )
     by_model = replies.values("model").annotate(answers=Count("id"), cost=Sum("cost_usd")).order_by("-answers")
     top_users = (
-        replies.values("conversation__user__username").annotate(answers=Count("id"), cost=Sum("cost_usd")).order_by("-cost")[:10]
+        replies.values("conversation__user__username")
+        .annotate(answers=Count("id"), cost=Sum("cost_usd"))
+        .order_by("-cost")[:10]
     )
     tools: dict[str, int] = {}
     for trace in replies.exclude(tool_calls=[]).values_list("tool_calls", flat=True):

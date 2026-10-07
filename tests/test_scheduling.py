@@ -78,7 +78,6 @@ def test_same_day_afternoon_booking_proposal_is_accepted(clinic, tutor):
     assert result["status"] == "awaiting_client_confirmation"
 
 
-
 @pytest.mark.django_db
 def test_cleanup_frees_slots_booked_by_demo_accounts(tutor):
     exam, chen = Service.objects.get(name="Wellness exam"), Vet.objects.get(name="Dr. Maya Chen")

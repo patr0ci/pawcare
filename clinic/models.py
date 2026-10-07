@@ -50,7 +50,9 @@ class Vet(models.Model):
     name = models.CharField(max_length=120)
     specialty = models.CharField(max_length=120, blank=True)
     treats = models.JSONField(default=list, help_text="Species codes this vet sees, e.g. ['dog', 'cat'].")
-    services = models.ManyToManyField("Service", blank=True, related_name="vets", help_text="Services this vet performs.")
+    services = models.ManyToManyField(
+        "Service", blank=True, related_name="vets", help_text="Services this vet performs."
+    )
 
     def __str__(self):
         return self.name
@@ -100,7 +102,9 @@ class Appointment(models.Model):
         return self.starts_at + timedelta(minutes=self.service.duration_minutes)
 
 
-def available_slots(service: Service, vet: Vet, day, pet: Pet | None = None, ignore: Appointment | None = None) -> list[datetime]:
+def available_slots(
+    service: Service, vet: Vet, day, pet: Pet | None = None, ignore: Appointment | None = None
+) -> list[datetime]:
     """Start times on `day` where `vet` (and `pet`, if given) is free for the whole duration of `service`.
     `ignore` leaves one appointment out, so an appointment being rescheduled doesn't block itself."""
     hours = OPENING_HOURS.get(day.weekday())

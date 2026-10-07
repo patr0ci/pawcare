@@ -18,10 +18,14 @@ def parse_markdown(path: Path) -> dict:
     text = path.read_text(encoding="utf-8-sig")
     try:
         _, front, body = text.split("---", 2)
-        meta = dict(line.split(":", 1) for line in front.strip().splitlines() if line.strip() and not line.startswith("#"))
+        meta = dict(
+            line.split(":", 1) for line in front.strip().splitlines() if line.strip() and not line.startswith("#")
+        )
         meta["title"], meta["category"]
     except (ValueError, KeyError) as exc:
-        raise ValueError(f"{path.name}: expected front matter with 'title:' and 'category:' between '---' lines") from exc
+        raise ValueError(
+            f"{path.name}: expected front matter with 'title:' and 'category:' between '---' lines"
+        ) from exc
     return {
         "slug": path.stem,
         "title": meta["title"].strip(),

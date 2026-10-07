@@ -78,8 +78,15 @@ def score_case(case: dict, text: str, cited_slugs: list[str]) -> list[str]:
 
 
 def run_case(case: dict, user) -> dict:
-    result = {"suite": "rag", "question": case["question"], "answer": "", "cited": [], "cost_usd": 0.0,
-              "latency_ms": 0, "tools": []}
+    result = {
+        "suite": "rag",
+        "question": case["question"],
+        "answer": "",
+        "cited": [],
+        "cost_usd": 0.0,
+        "latency_ms": 0,
+        "tools": [],
+    }
     try:
         with transaction.atomic():
             conversation = Conversation.objects.create(user=user)
@@ -116,7 +123,9 @@ def setup_agent_case(case: dict, tutor) -> Appointment | None:
     pet = tutor.pets.get(name=spec["pet"])
     service = Service.objects.get(name=spec["service"])
     starts_at = (timezone.now() + timedelta(hours=spec["hours_ahead"])).replace(minute=0, second=0, microsecond=0)
-    return Appointment.objects.create(pet=pet, vet=services.vets_for(pet, service)[0], service=service, starts_at=starts_at)
+    return Appointment.objects.create(
+        pet=pet, vet=services.vets_for(pet, service)[0], service=service, starts_at=starts_at
+    )
 
 
 def next_dates(weekday: str, count: int = 2) -> list:
@@ -147,7 +156,11 @@ def score_agent_case(case: dict, text: str, actions: list, appointment, trace: l
             failures.append("acted on the wrong appointment")
         if "pet" in expect and "pet_id" in p and Pet.objects.get(id=p["pet_id"]).name != expect["pet"]:
             failures.append(f"wrong pet (expected {expect['pet']})")
-        if "service" in expect and "service_id" in p and Service.objects.get(id=p["service_id"]).name != expect["service"]:
+        if (
+            "service" in expect
+            and "service_id" in p
+            and Service.objects.get(id=p["service_id"]).name != expect["service"]
+        ):
             failures.append(f"wrong service (expected {expect['service']})")
         if "starts_at" in p:
             start = timezone.localtime(parse_time(p["starts_at"]))
@@ -164,8 +177,16 @@ def score_agent_case(case: dict, text: str, actions: list, appointment, trace: l
 
 
 def run_agent_case(case: dict) -> dict:
-    result = {"suite": "agent", "question": " → ".join(case["turns"]), "answer": "", "cited": [], "cost_usd": 0.0,
-              "latency_ms": 0, "tools": [], "guardrail": False}
+    result = {
+        "suite": "agent",
+        "question": " → ".join(case["turns"]),
+        "answer": "",
+        "cited": [],
+        "cost_usd": 0.0,
+        "latency_ms": 0,
+        "tools": [],
+        "guardrail": False,
+    }
     try:
         with transaction.atomic():
             tutor = create_demo_tutor()

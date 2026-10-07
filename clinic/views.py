@@ -22,9 +22,9 @@ def budget_spent() -> bool:
 
 @require_POST
 def demo_login(request):
-    created_today = get_user_model().objects.filter(
-        username__startswith="demo-", date_joined__date=timezone.localdate()
-    ).count()
+    created_today = (
+        get_user_model().objects.filter(username__startswith="demo-", date_joined__date=timezone.localdate()).count()
+    )
     if created_today >= settings.DEMO_ACCOUNTS_PER_DAY:
         return render(request, "clinic/home.html", {"demo_full": True, "budget_spent": budget_spent()}, status=429)
     tutor = create_demo_tutor()

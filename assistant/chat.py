@@ -86,9 +86,7 @@ def is_unbacked_claim(conversation: Conversation, runner: ToolRunner, text: str)
 def upcoming_calendar(days: int = 14) -> str:
     """Small models are unreliable at date arithmetic; spelling out the next two weeks fixes "next Tuesday"."""
     today = timezone.localdate()
-    return ", ".join(
-        (today + timedelta(days=i)).strftime("%a %Y-%m-%d") for i in range(1, days + 1)
-    )
+    return ", ".join((today + timedelta(days=i)).strftime("%a %Y-%m-%d") for i in range(1, days + 1))
 
 
 def format_sources(sources: list[Source]) -> str:

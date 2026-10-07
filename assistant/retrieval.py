@@ -58,4 +58,3 @@ def retrieve(query: str | list[str], k: int | None = None, max_distance: float |
         )
         for i, chunk in enumerate(articles.values(), start=1)
     ]
-

@@ -37,9 +37,7 @@ def seed_clinic() -> None:
     for name, specialty, treats in VETS:
         Vet.objects.update_or_create(name=name, defaults={"specialty": specialty, "treats": treats})
     for name, minutes, price in SERVICES:
-        Service.objects.update_or_create(
-            name=name, defaults={"duration_minutes": minutes, "price_usd": Decimal(price)}
-        )
+        Service.objects.update_or_create(name=name, defaults={"duration_minutes": minutes, "price_usd": Decimal(price)})
     for vet_name, service_names in VET_SERVICES.items():
         Vet.objects.get(name=vet_name).services.set(Service.objects.filter(name__in=service_names))
 
@@ -53,11 +51,20 @@ def create_demo_tutor() -> Tutor:
     )
     tutor = Tutor.objects.create(user=user, phone="(555) 010-0000")
     Pet.objects.create(
-        tutor=tutor, name="Biscuit", species=Pet.Species.DOG, breed="Beagle",
-        birth_date=date(2021, 4, 12), weight_kg=Decimal("11.4"),
+        tutor=tutor,
+        name="Biscuit",
+        species=Pet.Species.DOG,
+        breed="Beagle",
+        birth_date=date(2021, 4, 12),
+        weight_kg=Decimal("11.4"),
     )
     Pet.objects.create(
-        tutor=tutor, name="Miso", species=Pet.Species.CAT, breed="Domestic shorthair",
-        birth_date=date(2023, 9, 2), weight_kg=Decimal("4.1"), allergies="Chicken",
+        tutor=tutor,
+        name="Miso",
+        species=Pet.Species.CAT,
+        breed="Domestic shorthair",
+        birth_date=date(2023, 9, 2),
+        weight_kg=Decimal("4.1"),
+        allergies="Chicken",
     )
     return tutor

@@ -20,7 +20,9 @@ from tests.test_scheduling import next_weekday
 
 
 def at(day, hour, minute=0):
-    return timezone.make_aware(timezone.datetime.combine(day, timezone.datetime.min.time())).replace(hour=hour, minute=minute)
+    return timezone.make_aware(timezone.datetime.combine(day, timezone.datetime.min.time())).replace(
+        hour=hour, minute=minute
+    )
 
 
 @pytest.mark.django_db
@@ -38,15 +40,25 @@ def test_a_pet_cannot_be_in_two_places_at_once(tutor):
 def test_vets_only_offer_their_own_services(tutor):
     biscuit = tutor.pets.get(name="Biscuit")
     with pytest.raises(BookingError, match="doesn't do wellness exam"):
-        check_slot(biscuit, Vet.objects.get(name="Dr. Rafael Souza"), Service.objects.get(name="Wellness exam"), at(next_weekday(1), 10))
+        check_slot(
+            biscuit,
+            Vet.objects.get(name="Dr. Rafael Souza"),
+            Service.objects.get(name="Wellness exam"),
+            at(next_weekday(1), 10),
+        )
 
 
 @pytest.mark.django_db
 def test_past_and_completed_appointments_are_history(tutor):
-    biscuit, exam, chen = tutor.pets.get(name="Biscuit"), Service.objects.get(name="Wellness exam"), Vet.objects.get(name="Dr. Maya Chen")
+    biscuit, exam, chen = (
+        tutor.pets.get(name="Biscuit"),
+        Service.objects.get(name="Wellness exam"),
+        Vet.objects.get(name="Dr. Maya Chen"),
+    )
     past = Appointment.objects.create(pet=biscuit, vet=chen, service=exam, starts_at=timezone.now() - timedelta(days=3))
-    done = Appointment.objects.create(pet=biscuit, vet=chen, service=exam, starts_at=at(next_weekday(2), 9),
-                                      status=Appointment.Status.COMPLETED)
+    done = Appointment.objects.create(
+        pet=biscuit, vet=chen, service=exam, starts_at=at(next_weekday(2), 9), status=Appointment.Status.COMPLETED
+    )
     for appointment in (past, done):
         with pytest.raises(BookingError):
             cancel(tutor, appointment.id)
@@ -57,11 +69,17 @@ def test_past_and_completed_appointments_are_history(tutor):
 
 @pytest.mark.django_db
 def test_reschedule_proposal_checks_the_slot_up_front(tutor, monkeypatch):
-    biscuit, exam, chen = tutor.pets.get(name="Biscuit"), Service.objects.get(name="Wellness exam"), Vet.objects.get(name="Dr. Maya Chen")
+    biscuit, exam, chen = (
+        tutor.pets.get(name="Biscuit"),
+        Service.objects.get(name="Wellness exam"),
+        Vet.objects.get(name="Dr. Maya Chen"),
+    )
     day = next_weekday(3)
     mine = Appointment.objects.create(pet=biscuit, vet=chen, service=exam, starts_at=at(day, 9))
     Appointment.objects.create(pet=tutor.pets.get(name="Miso"), vet=chen, service=exam, starts_at=at(day, 11))
-    llm = ScriptedLLM([[("propose_reschedule", {"appointment_id": mine.id, "starts_at": at(day, 11).isoformat()})], "x"])
+    llm = ScriptedLLM(
+        [[("propose_reschedule", {"appointment_id": mine.id, "starts_at": at(day, 11).isoformat()})], "x"]
+    )
     monkeypatch.setattr(chat, "get_llm", lambda: llm)
     list(answer(Conversation.objects.create(user=tutor.user), "move it"))
     tool_result = json.loads([m for m in llm.seen_messages[-1] if m["role"] == "tool"][0]["content"])
@@ -72,8 +90,12 @@ def test_reschedule_proposal_checks_the_slot_up_front(tutor, monkeypatch):
 @pytest.mark.django_db
 def test_confirm_survives_unexpected_errors_and_long_text(client, tutor):
     conversation = Conversation.objects.create(user=tutor.user)
-    action = PendingAction.objects.create(conversation=conversation, kind="book", summary="x" * 500,
-                                          payload={"pet_id": 1, "service_id": 999999, "vet_id": 1, "starts_at": "2030-01-01T10:00"})
+    action = PendingAction.objects.create(
+        conversation=conversation,
+        kind="book",
+        summary="x" * 500,
+        payload={"pet_id": 1, "service_id": 999999, "vet_id": 1, "starts_at": "2030-01-01T10:00"},
+    )
     client.force_login(tutor.user)
     data = client.post(reverse("assistant:confirm_action", args=[action.id])).json()
     assert data["status"] == "failed" and "ask the assistant again" in data["message"]
@@ -150,7 +172,9 @@ def test_reload_shows_resolved_action_cards_in_order(client, tutor):
     session["conversation_id"] = conversation.id
     session.save()
     Message.objects.create(conversation=conversation, role="user", content="book it")
-    PendingAction.objects.create(conversation=conversation, kind="book", payload={}, summary="Book exam", status="confirmed")
+    PendingAction.objects.create(
+        conversation=conversation, kind="book", payload={}, summary="Book exam", status="confirmed"
+    )
     Message.objects.create(conversation=conversation, role="assistant", content="Please confirm.")
     Message.objects.create(conversation=conversation, role="assistant", content="Booked: exam")
     html = client.get(reverse("assistant:chat")).content.decode()
@@ -174,8 +198,12 @@ def test_article_lists_and_cross_links(client, db):
     from helpcenter.models import Article
 
     Article.objects.create(slug="vaccine-prices", title="Vaccine Prices", category="V", body="Prices.")
-    Article.objects.create(slug="services", title="Services", category="P",
-                           body='Our services:\n- Exam: $65\n- Nail trim: $20\n\nSee "Vaccine Prices". <b>not bold</b>')
+    Article.objects.create(
+        slug="services",
+        title="Services",
+        category="P",
+        body='Our services:\n- Exam: $65\n- Nail trim: $20\n\nSee "Vaccine Prices". <b>not bold</b>',
+    )
     html = client.get("/help/services/").content.decode()
     assert "<ul><li>Exam: $65</li>" in html
     assert '<a href="/help/vaccine-prices/">Vaccine Prices</a>' in html

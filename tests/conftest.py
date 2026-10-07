@@ -34,12 +34,24 @@ def articles(db):
     from helpcenter.ingest import index_article
 
     data = [
-        ("vaccine-prices", "Vaccine Prices", "Vaccines & Prevention",
-         "Rabies vaccine costs $28. DHPP costs $35.\n\nThe vaccination visit fee is $45."),
-        ("opening-hours", "Opening Hours", "Visits & Booking",
-         "We are open Monday to Friday from 9 to 18 and Saturday from 9 to 13. Closed on Sunday."),
-        ("emergencies", "Emergencies", "Emergencies",
-         "After hours call the Springfield 24h Animal ER. Lilies are toxic to cats."),
+        (
+            "vaccine-prices",
+            "Vaccine Prices",
+            "Vaccines & Prevention",
+            "Rabies vaccine costs $28. DHPP costs $35.\n\nThe vaccination visit fee is $45.",
+        ),
+        (
+            "opening-hours",
+            "Opening Hours",
+            "Visits & Booking",
+            "We are open Monday to Friday from 9 to 18 and Saturday from 9 to 13. Closed on Sunday.",
+        ),
+        (
+            "emergencies",
+            "Emergencies",
+            "Emergencies",
+            "After hours call the Springfield 24h Animal ER. Lilies are toxic to cats.",
+        ),
     ]
     for slug, title, category, body in data:
         index_article(Article.objects.create(slug=slug, title=title, category=category, body=body))

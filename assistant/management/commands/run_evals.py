@@ -28,9 +28,14 @@ class Command(BaseCommand):
             reasons = f"  → {'; '.join(r['failures'])}" if r["failures"] else ""
             self.stdout.write(f"{mark}{runs}{guard}  {r['suite']:5}  {r['question']}{reasons}")
         for name, s in run.meta["suites"].items():
-            self.stdout.write(f"{name}: {s['passed']}/{s['total']}" + (f", guardrail fired in {s['guardrail_runs']} runs" if s["guardrail_runs"] else ""))
+            self.stdout.write(
+                f"{name}: {s['passed']}/{s['total']}"
+                + (f", guardrail fired in {s['guardrail_runs']} runs" if s["guardrail_runs"] else "")
+            )
         self.stdout.write(
-            self.style.SUCCESS(f"\n{run.passed}/{run.total} passed ({run.score:.0%}) · {run.model} · ${run.cost_usd:.4f}")
+            self.style.SUCCESS(
+                f"\n{run.passed}/{run.total} passed ({run.score:.0%}) · {run.model} · ${run.cost_usd:.4f}"
+            )
         )
         if options["save"]:
             self.stdout.write(f"Saved to {save_run(run)}")

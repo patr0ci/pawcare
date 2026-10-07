@@ -8,6 +8,7 @@ from django.utils.safestring import mark_safe
 
 def link_references(text: str, links: dict[str, str]) -> str:
     """`text` is already escaped. Quoted titles of other articles ("Vaccine Prices") become links."""
+
     def replace(match):
         title = match.group(1)
         url = links.get(title)
@@ -30,6 +31,10 @@ def render_body(body: str, links: dict[str, str]) -> list:
             bullets = [line for line in lines if line.lstrip().startswith("- ")]
             html = f"<p>{link_references(escape(' '.join(intro)), links)}</p>"
             if bullets:
-                html += "<ul>" + "".join(f"<li>{link_references(escape(b.lstrip()[2:]), links)}</li>" for b in bullets) + "</ul>"
+                html += (
+                    "<ul>"
+                    + "".join(f"<li>{link_references(escape(b.lstrip()[2:]), links)}</li>" for b in bullets)
+                    + "</ul>"
+                )
             blocks.append(mark_safe(html))
     return blocks

@@ -65,8 +65,17 @@ def test_booking_is_only_proposed_until_confirmed(client, tutor, script):
     script(
         [("list_my_pets", {}), ("list_services", {})],
         [("find_available_slots", {"pet_id": biscuit.id, "service_id": exam.id, "date": day.isoformat()})],
-        [("propose_booking", {"pet_id": biscuit.id, "service_id": exam.id, "vet_id": vet.id,
-                              "starts_at": timezone.localtime(start).isoformat()})],
+        [
+            (
+                "propose_booking",
+                {
+                    "pet_id": biscuit.id,
+                    "service_id": exam.id,
+                    "vet_id": vet.id,
+                    "starts_at": timezone.localtime(start).isoformat(),
+                },
+            )
+        ],
         "I found a slot. Please confirm.",
     )
     conversation = Conversation.objects.create(user=tutor.user)
@@ -77,7 +86,12 @@ def test_booking_is_only_proposed_until_confirmed(client, tutor, script):
     assert [e["label"] for e in events if e["type"] == "tool"][:2] == ["Looking up your pets", "Checking services"]
     assert not Appointment.objects.exists()  # nothing written yet
     reply = conversation.messages.last()
-    assert [c["name"] for c in reply.tool_calls] == ["list_my_pets", "list_services", "find_available_slots", "propose_booking"]
+    assert [c["name"] for c in reply.tool_calls] == [
+        "list_my_pets",
+        "list_services",
+        "find_available_slots",
+        "propose_booking",
+    ]
     assert reply.prompt_tokens == 400
 
     client.force_login(tutor.user)
@@ -98,8 +112,17 @@ def test_claimed_proposal_without_tool_call_gets_one_corrective_round(tutor, scr
     vet, start = morning_slot(biscuit, exam, next_weekday(1))
     llm = script(
         "I've set up a proposal for 9:00 AM. Please confirm the proposal to lock it in.",
-        [("propose_booking", {"pet_id": biscuit.id, "service_id": exam.id, "vet_id": vet.id,
-                              "starts_at": timezone.localtime(start).isoformat()})],
+        [
+            (
+                "propose_booking",
+                {
+                    "pet_id": biscuit.id,
+                    "service_id": exam.id,
+                    "vet_id": vet.id,
+                    "starts_at": timezone.localtime(start).isoformat(),
+                },
+            )
+        ],
         "Here it is. Please click Confirm.",
     )
     conversation = Conversation.objects.create(user=tutor.user)
@@ -135,7 +158,12 @@ def test_tools_cannot_touch_another_clients_pets(tutor, script):
     stranger_pet = create_demo_tutor().pets.first()
     exam = Service.objects.get(name="Wellness exam")
     llm = script(
-        [("find_available_slots", {"pet_id": stranger_pet.id, "service_id": exam.id, "date": next_weekday(1).isoformat()})],
+        [
+            (
+                "find_available_slots",
+                {"pet_id": stranger_pet.id, "service_id": exam.id, "date": next_weekday(1).isoformat()},
+            )
+        ],
         "Sorry.",
     )
     list(answer(Conversation.objects.create(user=tutor.user), "slots for pet"))
@@ -157,8 +185,17 @@ def test_unavailable_time_is_rejected_at_proposal(tutor, script):
     sunday = timezone.localtime().replace(hour=10, minute=0, second=0, microsecond=0)
     sunday += timedelta(days=(6 - sunday.weekday()) % 7 or 7)
     llm = script(
-        [("propose_booking", {"pet_id": biscuit.id, "service_id": exam.id, "vet_id": Vet.objects.first().id,
-                              "starts_at": sunday.isoformat()})],
+        [
+            (
+                "propose_booking",
+                {
+                    "pet_id": biscuit.id,
+                    "service_id": exam.id,
+                    "vet_id": Vet.objects.first().id,
+                    "starts_at": sunday.isoformat(),
+                },
+            )
+        ],
         "That didn't work.",
     )
     list(answer(Conversation.objects.create(user=tutor.user), "book sunday"))
@@ -172,8 +209,12 @@ def test_slot_taken_between_proposal_and_confirmation(client, tutor, script):
     exam = Service.objects.get(name="Wellness exam")
     vet, start = morning_slot(biscuit, exam, next_weekday(2))
     script(
-        [("propose_booking", {"pet_id": biscuit.id, "service_id": exam.id, "vet_id": vet.id,
-                              "starts_at": start.isoformat()})],
+        [
+            (
+                "propose_booking",
+                {"pet_id": biscuit.id, "service_id": exam.id, "vet_id": vet.id, "starts_at": start.isoformat()},
+            )
+        ],
         "Please confirm.",
     )
     events = list(answer(Conversation.objects.create(user=tutor.user), "book"))
@@ -211,7 +252,15 @@ def test_reschedule_into_overlapping_time_of_same_appointment(client, tutor, scr
     day = next_weekday(3)
     start = timezone.make_aware(timezone.datetime.combine(day, timezone.datetime.min.time())).replace(hour=10)
     appointment = Appointment.objects.create(pet=biscuit, vet=vet, service=dental, starts_at=start)
-    script([("propose_reschedule", {"appointment_id": appointment.id, "starts_at": (start + timedelta(minutes=30)).isoformat()})], "ok")
+    script(
+        [
+            (
+                "propose_reschedule",
+                {"appointment_id": appointment.id, "starts_at": (start + timedelta(minutes=30)).isoformat()},
+            )
+        ],
+        "ok",
+    )
     events = list(answer(Conversation.objects.create(user=tutor.user), "move it 30 min later"))
 
     client.force_login(tutor.user)
@@ -225,7 +274,9 @@ def test_reschedule_into_overlapping_time_of_same_appointment(client, tutor, scr
 @pytest.mark.django_db
 def test_expired_proposal_is_not_executed(client, tutor):
     conversation = Conversation.objects.create(user=tutor.user)
-    action = PendingAction.objects.create(conversation=conversation, kind="cancel", payload={"appointment_id": 1}, summary="x")
+    action = PendingAction.objects.create(
+        conversation=conversation, kind="cancel", payload={"appointment_id": 1}, summary="x"
+    )
     PendingAction.objects.filter(id=action.id).update(created_at=timezone.now() - timedelta(hours=1))
     client.force_login(tutor.user)
     assert client.post(reverse("assistant:confirm_action", args=[action.id])).json()["status"] == "failed"
@@ -314,10 +365,18 @@ def test_unknown_action_kind_is_never_executed_as_a_cancellation(tutor):
     from assistant.tools import execute
 
     biscuit = tutor.pets.get(name="Biscuit")
-    appointment = Appointment.objects.create(pet=biscuit, vet=Vet.objects.first(), service=Service.objects.first(),
-                                             starts_at=timezone.now() + timedelta(days=3))
-    action = PendingAction.objects.create(conversation=Conversation.objects.create(user=tutor.user), kind="refund",
-                                          payload={"appointment_id": appointment.id}, summary="x")
+    appointment = Appointment.objects.create(
+        pet=biscuit,
+        vet=Vet.objects.first(),
+        service=Service.objects.first(),
+        starts_at=timezone.now() + timedelta(days=3),
+    )
+    action = PendingAction.objects.create(
+        conversation=Conversation.objects.create(user=tutor.user),
+        kind="refund",
+        payload={"appointment_id": appointment.id},
+        summary="x",
+    )
     with pytest.raises(ValueError, match="Unknown action kind"):
         execute(action)
     appointment.refresh_from_db()
