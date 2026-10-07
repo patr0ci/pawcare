@@ -55,7 +55,7 @@ def test_dashboard_is_staff_only_and_renders(client, tutor, articles):
     EvalRun.objects.create(model="m", total=1, passed=1, results=[{"question": "q", "answer": "a", "cited": [], "failures": []}])
 
     client.force_login(tutor.user)
-    assert client.get(reverse("assistant:dashboard")).status_code == 302  # not staff
+    assert client.get(reverse("assistant:dashboard")).status_code == 403  # not staff
 
     staff = get_user_model().objects.create_user("staff", password="x", is_staff=True)
     client.force_login(staff)
@@ -64,12 +64,25 @@ def test_dashboard_is_staff_only_and_renders(client, tutor, articles):
 
 
 @pytest.mark.django_db
-def test_public_demo_dashboard(client, tutor, settings):
+def test_public_demo_dashboard_is_open_to_anyone(client, tutor, settings):
     settings.DEMO_PUBLIC_DASHBOARD = True
+    EvalRun.objects.create(model="m", total=2, passed=1, meta={"repeat": 3, "suites": {
+        "rag": {"passed": 1, "total": 1, "guardrail_runs": 0}, "agent": {"passed": 0, "total": 1, "guardrail_runs": 2}}},
+        results=[{"suite": "agent", "question": "book", "answer": "a", "cited": [], "failures": ["x"], "runs": 3, "passed_runs": 1}])
+    html = client.get(reverse("assistant:dashboard")).content.decode()  # no account needed to see the numbers
+    assert "help-center answers 1/1" in html and "booking conversations 0/1" in html and "fired in 2 booking runs" in html
+    assert "run_evals" not in html  # no developer instructions for visitors
+    assert "Dashboard" in client.get(reverse("home")).content.decode()
     client.force_login(tutor.user)
     assert client.get(reverse("assistant:dashboard")).status_code == 200
-    client.logout()
-    assert client.get(reverse("assistant:dashboard")).status_code == 302
+
+
+@pytest.mark.django_db
+def test_private_dashboard_does_not_reveal_the_admin_path(client, settings):
+    # It used to send anonymous visitors to admin:login, which gave away the non-default admin URL.
+    response = client.get(reverse("assistant:dashboard"))
+    assert response.status_code == 302
+    assert response.url.startswith(reverse("login")) and settings.ADMIN_URL not in response.url
 
 
 class BookingLLM:

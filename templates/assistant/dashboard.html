@@ -1,8 +1,12 @@
 {% extends "base.html" %}
 {% block title %}Assistant dashboard{% endblock %}
 {% block content %}
-<p class="eyebrow">Staff · last 30 days</p>
+<p class="eyebrow">{% if user.is_staff %}Staff{% else %}Staff view, public in this demo{% endif %} · last 30 days</p>
 <h1>Assistant dashboard</h1>
+{% if not user.is_staff %}
+<p class="lead">What the clinic's team would watch: what the assistant costs, how it's used, which tools it calls,
+  how many of its proposals clients confirm, and how it scores on a fixed test set. Visitor names are hidden.</p>
+{% endif %}
 
 <div class="stats">
   <div><span class="stat">{{ totals.answers|default:0 }}</span><span class="label">answers</span></div>
@@ -50,20 +54,27 @@
 
 <h2>Evaluation</h2>
 {% if eval_run %}
-  <p><strong>{{ eval_run.passed }}/{{ eval_run.total }}</strong> passed ({% widthratio eval_run.passed eval_run.total 100 %}%) ·
-     {{ eval_run.model }} · ${{ eval_run.cost_usd|floatformat:4 }} · {{ eval_run.created_at|date:"M j, H:i" }}</p>
+  {% with suites=eval_run.meta.suites %}
+  <p><strong>{{ eval_run.passed }}/{{ eval_run.total }}</strong> passed ({% widthratio eval_run.passed eval_run.total 100 %}%){% if suites %}:
+     {% if suites.rag %}help-center answers {{ suites.rag.passed }}/{{ suites.rag.total }}{% endif %}{% if suites.rag and suites.agent %} · {% endif %}
+     {% if suites.agent %}booking conversations {{ suites.agent.passed }}/{{ suites.agent.total }}{% endif %}{% endif %}
+     · {{ eval_run.model }} · ${{ eval_run.cost_usd|floatformat:4 }} · {{ eval_run.created_at|date:"M j, H:i" }}</p>
+  <p class="muted small">Every case runs against the live model{% if eval_run.meta.repeat > 1 %} {{ eval_run.meta.repeat }} times and passes only if every run passes{% endif %}.
+     {% if suites.agent.guardrail_runs %}The guardrail against unbacked “please confirm” replies fired in {{ suites.agent.guardrail_runs }} booking runs.{% endif %}
+     {% if eval_run.meta.git_sha %}Code {{ eval_run.meta.git_sha }} ·{% endif %} prompt {{ eval_run.meta.prompt_sha|default:"—" }}.</p>
+  {% endwith %}
   <table class="evals">
     <tr><th></th><th>Question</th><th>Answer</th><th>Cited</th></tr>
     {% for r in eval_run.results %}
       <tr class="{% if r.failures %}fail{% else %}pass{% endif %}">
         <td>{% if r.failures %}✗{% else %}✓{% endif %}</td>
-        <td>{{ r.question }}{% if r.failures %}<div class="small fail-reason">{{ r.failures|join:"; " }}</div>{% endif %}</td>
+        <td>{% if r.suite == "agent" %}<span class="tag">booking</span> {% endif %}{{ r.question }}{% if r.runs > 1 %} <span class="small muted">{{ r.passed_runs }}/{{ r.runs }}</span>{% endif %}{% if r.failures %}<div class="small fail-reason">{{ r.failures|join:"; " }}</div>{% endif %}</td>
         <td class="small">{{ r.answer|truncatechars:220 }}</td>
         <td class="small">{{ r.cited|join:", " }}</td>
       </tr>
     {% endfor %}
   </table>
 {% else %}
-  <p class="muted">No evaluation yet. Run <code>python manage.py run_evals</code>.</p>
+  <p class="muted">No evaluation yet.{% if user.is_staff %} Run <code>python manage.py run_evals</code>.{% endif %}</p>
 {% endif %}
 {% endblock %}

@@ -2,8 +2,9 @@ import json
 import logging
 
 from django.conf import settings
-from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.views import redirect_to_login
+from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.db.models import Avg, Count, Sum
 from django.db.models.functions import TruncDate
@@ -141,14 +142,17 @@ def dismiss_action(request, action_id):
 
 
 def dashboard_allowed(user) -> bool:
-    return user.is_staff or (settings.DEMO_PUBLIC_DASHBOARD and user.is_authenticated)
+    return user.is_staff or settings.DEMO_PUBLIC_DASHBOARD
 
 
 def dashboard(request):
     """Staff view: what the assistant costs, how it's used, and how it scores on the eval set.
-    On the public demo (DEMO_PUBLIC_DASHBOARD) any logged-in visitor can see it."""
+    On the public demo (DEMO_PUBLIC_DASHBOARD) anyone can see it, with visitor names hidden."""
     if not dashboard_allowed(request.user):
-        return staff_member_required(lambda r: None)(request)
+        if request.user.is_authenticated:
+            raise PermissionDenied
+        # The site's own login page, not admin:login: that would give away the non-default admin path.
+        return redirect_to_login(request.get_full_path())
     since = timezone.now() - timedelta(days=30)
     replies = Message.objects.filter(role=Message.Role.ASSISTANT, created_at__gte=since).exclude(model="")
     totals = replies.aggregate(

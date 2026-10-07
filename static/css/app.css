@@ -94,5 +94,6 @@ th { color: var(--muted); font-weight: 500; }
 .evals tr.fail td:first-child { color: #c0392b; font-weight: 700; }
 .evals tr.pass td:first-child { color: var(--accent); }
 .fail-reason { color: #c0392b; }
+.tag { font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; background: var(--accent-soft); color: var(--accent); border-radius: 999px; padding: .05rem .5rem; }
 .demo-alt { margin-top: 1.2rem; }
 .prose ul { padding-left: 1.2rem; }
