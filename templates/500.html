@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Something went wrong · PawCare Veterinary Clinic</title>
+  {# Rendered with no context, so no template tags and inline styles: whatever broke the page (the database, #}
+  {# a context processor, the static files manifest) can't break this one too. #}
+  <style>
+    :root { --bg: #fbf8f3; --surface: #ffffff; --ink: #1f2a2e; --muted: #6b7478; --line: #e7e1d6; --accent: #1f6f63; }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #14191b; --surface: #1c2326; --ink: #e8ecec; --muted: #9aa5a8; --line: #2c3539; --accent: #4fb3a2; }
+    }
+    body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.6 Inter, system-ui, sans-serif; }
+    header { padding: .9rem clamp(1rem, 4vw, 3rem); border-bottom: 1px solid var(--line); background: var(--surface); }
+    .brand { font-family: Fraunces, Georgia, serif; font-size: 1.3rem; color: var(--ink); text-decoration: none; }
+    main { width: min(900px, 100%); margin: 0 auto; padding: 2rem 16px 4rem; box-sizing: border-box; }
+    h1 { font-family: Fraunces, Georgia, serif; line-height: 1.2; font-size: clamp(1.7rem, 4vw, 2.6rem); margin: .2em 0 .4em; }
+    p { font-size: 1.1rem; color: var(--muted); max-width: 60ch; }
+    a { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <header><a class="brand" href="/">🐾 PawCare</a></header>
+  <main>
+    <h1>Something went wrong on our side.</h1>
+    <p>The error has been logged. Please try again in a moment, or go back to the <a href="/">home page</a>.</p>
+  </main>
+</body>
+</html>

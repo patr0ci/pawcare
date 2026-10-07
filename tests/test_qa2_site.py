@@ -9,6 +9,7 @@ from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
+from django.views.defaults import server_error
 
 import helpcenter.ingest
 from clinic.demo import create_demo_tutor
@@ -247,3 +248,18 @@ def test_appointment_str_uses_clinic_time(tutor):
         starts_at=datetime(2030, 1, 8, 15, 0, tzinfo=UTC),  # 10:00 in New York
     )
     assert str(appointment).endswith("2030-01-08 10:00")
+
+
+@pytest.mark.django_db
+def test_error_pages_carry_the_site_and_a_way_home(client, rf):
+    response = client.get("/no-such-page/")
+    html = response.content.decode()
+    assert response.status_code == 404 and "couldn't find that page" in html and 'href="/"' in html
+    response = server_error(rf.get("/"))  # rendered with no context at all, as Django does on a 500
+    html = response.content.decode()
+    assert response.status_code == 500 and "PawCare" in html and 'href="/"' in html
+
+
+def test_favicon_ico_points_at_the_svg(client):
+    response = client.get("/favicon.ico")
+    assert response.status_code == 302 and response.url.endswith("img/favicon.svg")

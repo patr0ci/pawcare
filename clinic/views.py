@@ -2,6 +2,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model, login
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import redirect, render
+from django.templatetags.static import static
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
@@ -18,6 +19,12 @@ def home(request):
 
 def budget_spent() -> bool:
     return Message.objects.spent_today_usd() >= settings.ASSISTANT_DAILY_BUDGET_USD
+
+
+def favicon(request):
+    # Browsers and crawlers ask for /favicon.ico whatever the page's <link rel="icon"> says. Not permanent: in
+    # production the target is a hashed file name that changes when the icon does.
+    return redirect(static("img/favicon.svg"))
 
 
 @require_POST
