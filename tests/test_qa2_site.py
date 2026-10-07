@@ -76,3 +76,21 @@ def test_an_interrupted_update_leaves_the_old_text_and_chunks_together(tmp_path,
     monkeypatch.undo()
     assert ingest_directory(tmp_path)["updated"] == 1  # not "unchanged" with the old chunks
     assert "$30" in Article.objects.get().chunks.get().text
+
+
+@pytest.mark.django_db
+def test_cross_references_link_titles_with_ampersands_and_apostrophes(client):
+    from helpcenter.models import Article
+
+    Article.objects.create(slug="fleas-ticks", title="Fleas & Ticks", category="V", body="x")
+    Article.objects.create(slug="whats-covered", title="What's Covered", category="V", body="x")
+    Article.objects.create(
+        slug="plans",
+        title="Plans",
+        category="P",
+        body='See "Fleas & Ticks" and "What\'s Covered".\n- Not a title: "Cats & <b>Dogs</b>"',
+    )
+    html = client.get("/help/plans/").content.decode()
+    assert '"<a href="/help/fleas-ticks/">Fleas &amp; Ticks</a>"' in html
+    assert '"<a href="/help/whats-covered/">What&#x27;s Covered</a>"' in html
+    assert "<li>Not a title: &quot;Cats &amp; &lt;b&gt;Dogs&lt;/b&gt;&quot;</li>" in html
