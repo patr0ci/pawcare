@@ -119,7 +119,14 @@ LOGGING = {
     "formatters": {"plain": {"format": "{asctime} {levelname} {name}: {message}", "style": "{"}},
     "handlers": {"console": {"class": "logging.StreamHandler", "formatter": "plain"}},
     "root": {"handlers": ["console"], "level": os.getenv("LOG_LEVEL", "INFO")},
-    "loggers": {"django": {"handlers": ["console"], "level": "INFO", "propagate": False}},
+    "loggers": {
+        "django": {"handlers": ["console"], "level": "INFO", "propagate": False},
+        # The HTTP clients log every request to the model provider at INFO; that's noise, not news.
+        "httpx": {"level": "WARNING"},
+        "httpx2": {"level": "WARNING"},
+        "httpcore": {"level": "WARNING"},
+        "openai": {"level": "WARNING"},
+    },
 }
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
