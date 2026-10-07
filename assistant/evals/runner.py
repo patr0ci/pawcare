@@ -18,6 +18,7 @@ from datetime import timedelta
 from decimal import Decimal
 from pathlib import Path
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import transaction
 from django.utils import timezone
@@ -85,6 +86,8 @@ def run_case(case: dict, user) -> dict:
         "answer": "",
         "cited": [],
         "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
         "latency_ms": 0,
         "tools": [],
     }
@@ -100,6 +103,8 @@ def run_case(case: dict, user) -> dict:
                 "cited": cited,
                 "failures": score_case(case, text, cited),
                 "cost_usd": float(reply.cost_usd),
+                "prompt_tokens": reply.prompt_tokens,
+                "completion_tokens": reply.completion_tokens,
                 "latency_ms": reply.latency_ms,
                 "tools": [e["label"] for e in events if e["type"] == "tool"],
                 "guardrail": any(call["name"] == "guardrail" for call in reply.tool_calls),
@@ -185,6 +190,8 @@ def run_agent_case(case: dict) -> dict:
         "answer": "",
         "cited": [],
         "cost_usd": 0.0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
         "latency_ms": 0,
         "tools": [],
         "guardrail": False,
@@ -203,6 +210,8 @@ def run_agent_case(case: dict) -> dict:
                 "answer": replies[-1].content,
                 "failures": score_agent_case(case, replies[-1].content, actions, appointment, trace),
                 "cost_usd": float(sum(r.cost_usd for r in replies)),
+                "prompt_tokens": sum(r.prompt_tokens for r in replies),
+                "completion_tokens": sum(r.completion_tokens for r in replies),
                 "latency_ms": sum(r.latency_ms for r in replies),
                 "tools": [call["name"] for call in trace],
                 "guardrail": any(call["name"] == "guardrail" for call in trace),
@@ -226,6 +235,8 @@ def repeated(run_once, case, times: int) -> dict:
         "runs": times,
         "passed_runs": times - len(failing),
         "cost_usd": sum(a["cost_usd"] for a in attempts),
+        "prompt_tokens": sum(a["prompt_tokens"] for a in attempts),
+        "completion_tokens": sum(a["completion_tokens"] for a in attempts),
         "guardrail_runs": sum(1 for a in attempts if a.get("guardrail")),
     }
 
@@ -265,6 +276,14 @@ def run_evals(cases_path: Path | None = CASES, agent_cases_path: Path | None = A
         "cases_sha": sha(cases_text),
         "repeat": repeat,
         "suites": suites,
+        # cost_usd is tokens times these prices, which are set once for the deploy, not per model. With them and
+        # the token totals, the cost of a run made with another model can be recomputed later.
+        "llm_model": settings.LLM_MODEL,
+        "price_usd_per_m_tokens": {"input": settings.LLM_PRICE_INPUT_PER_M, "output": settings.LLM_PRICE_OUTPUT_PER_M},
+        "tokens": {
+            "prompt": sum(r["prompt_tokens"] for r in results),
+            "completion": sum(r["completion_tokens"] for r in results),
+        },
     }
     return EvalRun.objects.create(
         model=getattr(get_llm(), "model", "unknown"),

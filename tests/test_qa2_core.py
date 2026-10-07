@@ -9,6 +9,7 @@ from django.utils import timezone
 
 from assistant import chat
 from assistant.chat import answer
+from assistant.evals.runner import run_evals, save_run
 from assistant.llm import Delta, Done, ToolCall, Usage
 from assistant.models import Conversation, Message, PendingAction
 from assistant.tools import fmt
@@ -184,3 +185,18 @@ def test_reschedule_card_shows_the_old_time_and_the_new_one(tutor, script):
     summary = next(e["summary"] for e in events if e["type"] == "action")
     assert summary == f"Move Biscuit's Wellness exam from {fmt(old)} to {fmt(new)}"
     assert fmt(old).endswith("9:00 AM") and fmt(new).endswith("2:00 PM")
+
+
+@pytest.mark.django_db
+def test_eval_run_records_the_prices_its_cost_was_computed_with(articles, tmp_path, settings):
+    # The prices are global, not per model, so comparing models needs them to recompute a run's cost.
+    settings.LLM_MODEL, settings.LLM_PRICE_INPUT_PER_M, settings.LLM_PRICE_OUTPUT_PER_M = "vendor/model-x", 0.5, 2.0
+    cases = tmp_path / "cases.json"
+    cases.write_text(json.dumps([{"question": "rabies vaccine price", "must_include": ["$28"]}]))
+    run = run_evals(cases, agent_cases_path=None)
+    assert run.meta["llm_model"] == "vendor/model-x"
+    assert run.meta["price_usd_per_m_tokens"] == {"input": 0.5, "output": 2.0}
+    tokens = run.meta["tokens"]
+    assert tokens["prompt"] > 0 and tokens["completion"] > 0
+    assert float(run.cost_usd) == pytest.approx((tokens["prompt"] * 0.5 + tokens["completion"] * 2.0) / 1e6, abs=1e-6)
+    assert json.loads(save_run(run, tmp_path / "results").read_text())["meta"]["llm_model"] == "vendor/model-x"
