@@ -66,6 +66,8 @@ def chat(request):
             "remaining": remaining_today(request.user),
             # Said up front, so nobody types a question only to be told the demo is out for the day.
             "budget_spent": Message.objects.spent_today_usd() >= settings.ASSISTANT_DAILY_BUDGET_USD,
+            # The daily budget and limit reset at midnight in the clinic time zone (CLINIC_TIME_ZONE).
+            "clinic_time_zone": settings.TIME_ZONE.replace("_", " "),
         },
     )
 

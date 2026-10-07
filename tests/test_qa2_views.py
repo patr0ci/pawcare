@@ -100,3 +100,12 @@ def test_nul_characters_are_dropped_before_validation(client, tutor, articles):
     events = read_events(client.post(reverse("assistant:send_message"), {"message": "rabies\x00 vaccine price"}))
     assert events[-1]["type"] == "done"
     assert Message.objects.get(role="user").content == "rabies vaccine price"
+
+
+@pytest.mark.django_db
+def test_budget_notice_names_the_clinic_time_zone(client, tutor, settings):
+    settings.ASSISTANT_DAILY_BUDGET_USD = 0
+    settings.TIME_ZONE = "America/Sao_Paulo"  # CLINIC_TIME_ZONE: the day (and the budget) resets at its midnight
+    client.force_login(tutor.user)
+    html = client.get(reverse("assistant:chat")).content.decode()
+    assert "midnight, America/Sao Paulo time" in html and "US Eastern" not in html

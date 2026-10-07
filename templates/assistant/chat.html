@@ -42,7 +42,7 @@
 </div>
 {% if budget_spent %}
   <p class="notice">The live assistant is paused for today: the demo's daily AI budget is used up. It resets at
-    midnight (US Eastern).{% if demo_public_dashboard %} Meanwhile, the <a href="{% url 'assistant:dashboard' %}">dashboard</a> shows what it costs and how it scores.{% endif %}</p>
+    midnight, {{ clinic_time_zone }} time.{% if demo_public_dashboard %} Meanwhile, the <a href="{% url 'assistant:dashboard' %}">dashboard</a> shows what it costs and how it scores.{% endif %}</p>
 {% elif not remaining %}
   <p class="notice">You've used today's messages for this demo account. Come back tomorrow{% if demo_public_dashboard %}, or have a look at the <a href="{% url 'assistant:dashboard' %}">dashboard</a>{% endif %}.</p>
 {% endif %}
