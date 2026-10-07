@@ -3,16 +3,21 @@
 {% block content %}
 <section class="hero">
   <p class="eyebrow">Demo · AI added to an existing Django app</p>
-  <h1>Ask PawCare anything.<br>It answers from the clinic's own docs — and shows where.</h1>
+  <h1>Ask PawCare anything.<br>It answers from the clinic's own docs — and books the visit.</h1>
   <p class="lead">
     This is a fictional vet clinic. The "existing system" is a regular Django app (pets, vets, appointments,
-    help center). On top of it sits an assistant that retrieves help-center articles (RAG), cites its sources,
-    admits when it doesn't know, and logs tokens and cost for every answer.
+    help center). On top of it sits an assistant that answers from the help center and shows where each answer
+    came from, says when it doesn't know, and can book, move or cancel appointments — but only after you click
+    <strong>Confirm</strong>, and only through the clinic's own booking rules.
   </p>
-  {% if demo_full %}<p class="hint">The demo is at capacity for today. Please come back tomorrow!</p>{% endif %}
+  {% if budget_spent %}
+    <p class="notice">The live assistant is paused for today: the demo's daily AI budget is used up.
+      You can still look around{% if demo_public_dashboard %}, or see <a href="{% url 'assistant:dashboard' %}">what it costs and how it scores</a>{% endif %}.</p>
+  {% endif %}
+  {% if demo_full %}<p class="notice">The demo is at capacity for today. Please come back tomorrow!</p>{% endif %}
   {% if user.is_authenticated %}
     <a class="button" href="{% url 'assistant:chat' %}">Open the assistant</a>
-  {% else %}
+  {% elif not demo_full %}
     <form method="post" action="{% url 'demo_login' %}">{% csrf_token %}
       <button class="button">Try it — no sign-up</button>
     </form>
@@ -21,8 +26,8 @@
 </section>
 <section class="features">
   <div><h3>Grounded answers</h3><p>Retrieval over the clinic's help center with pgvector. Every claim links to the article it came from.</p></div>
+  <div><h3>Books, with your OK</h3><p>Finds a free slot and proposes the booking, change or cancellation. Nothing is written until you click Confirm.</p></div>
   <div><h3>Says "I don't know"</h3><p>Low-relevance results are dropped, so the model can't improvise prices or policies.</p></div>
-  <div><h3>Cost under control</h3><p>Tokens and USD logged per message, plus a per-user daily limit set in config.</p></div>
-  <div><h3>Any model</h3><p>OpenAI-compatible client: OpenRouter, OpenAI, DeepSeek or a self-hosted model — a config change.</p></div>
+  <div><h3>Cost and quality in view</h3><p>Every answer's tokens, cost and latency, plus a fixed test set — on a {% if demo_public_dashboard %}<a href="{% url 'assistant:dashboard' %}">live dashboard</a>{% else %}staff dashboard{% endif %}.</p></div>
 </section>
 {% endblock %}

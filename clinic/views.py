@@ -6,12 +6,18 @@ from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
+from assistant.models import Message
+
 from .demo import create_demo_tutor
 from .models import Appointment
 
 
 def home(request):
-    return render(request, "clinic/home.html")
+    return render(request, "clinic/home.html", {"budget_spent": budget_spent()})
+
+
+def budget_spent() -> bool:
+    return Message.objects.spent_today_usd() >= settings.ASSISTANT_DAILY_BUDGET_USD
 
 
 @require_POST
@@ -20,7 +26,7 @@ def demo_login(request):
         username__startswith="demo-", date_joined__date=timezone.localdate()
     ).count()
     if created_today >= settings.DEMO_ACCOUNTS_PER_DAY:
-        return render(request, "clinic/home.html", {"demo_full": True}, status=429)
+        return render(request, "clinic/home.html", {"demo_full": True, "budget_spent": budget_spent()}, status=429)
     tutor = create_demo_tutor()
     login(request, tutor.user, backend="django.contrib.auth.backends.ModelBackend")
     next_url = request.POST.get("next", "")

@@ -4,6 +4,16 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}PawCare{% endblock %} · PawCare Veterinary Clinic</title>
+  <meta name="description" content="A portfolio demo of an AI assistant added to an existing Django app: it answers from the clinic's help center with sources, says when it doesn't know, and books visits only after you click Confirm.">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="PawCare — an AI assistant added to an existing Django app">
+  <meta property="og:description" content="Answers with sources, says when it doesn't know, and books visits only after you click Confirm. Try it without signing up; cost and test scores are on a live dashboard.">
+  <meta property="og:url" content="{{ request.scheme }}://{{ request.get_host }}{{ request.path }}">
+  <meta property="og:image" content="{{ request.scheme }}://{{ request.get_host }}{% static 'img/og.png' %}">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" href="{% static 'img/favicon.svg' %}" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{% static 'css/app.css' %}">
@@ -29,8 +39,11 @@
     {% block content %}{% endblock %}
   </main>
   <footer class="footer">
-    Fictional clinic · Portfolio demo of adding an AI assistant to an existing Django app ·
-    <a href="https://github.com/patr0ci/pawcare">Source</a>
+    <p>Fictional clinic, people and prices. A portfolio demo by <strong>Felipe Patrocínio</strong>, who adds LLM
+      features to Django apps that already exist.</p>
+    <p><a href="https://www.linkedin.com/in/patroci-dev/">LinkedIn</a> · <a href="https://github.com/patr0ci">GitHub</a> ·
+      <a href="mailto:felipepatrocinio93@gmail.com">felipepatrocinio93@gmail.com</a> ·
+      <a href="https://github.com/patr0ci/pawcare">Source code</a></p>
   </footer>
   {% block scripts %}{% endblock %}
 </body>

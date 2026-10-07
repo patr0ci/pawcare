@@ -6,7 +6,8 @@
 <div class="chat-header">
   <div>
     <h1>PawCare assistant</h1>
-    <p class="muted">Answers come from the <a href="{% url 'helpcenter:index' %}">help center</a>. Not veterinary advice.</p>
+    <p class="muted">Answers come from the <a href="{% url 'helpcenter:index' %}">help center</a>. It can also book, move or
+      cancel visits for Biscuit and Miso — you confirm every change. Not veterinary advice.</p>
   </div>
   <a class="link" href="?new=1">New conversation</a>
 </div>
@@ -24,25 +25,32 @@
       {% if a.status == "pending" %}
         <div data-action='{"id": {{ a.id }}, "summary": "{{ a.summary|escapejs }}"}'></div>
       {% else %}
-        <div class="action {{ a.status }}"><div class="action-title">{% if a.status == "confirmed" %}Done{% else %}No changes{% endif %}</div><div class="action-summary">{{ a.summary }}</div></div>
+        <div class="action {{ a.status }}"><div class="action-title">{% if a.status == "confirmed" %}Done{% else %}No changes{% endif %}</div><div class="action-summary">{{ a.summary }}</div>{% if a.status == "confirmed" %}<a class="small" href="{% url 'my_pets' %}">See it in My pets →</a>{% endif %}</div>
       {% endif %}
     {% endwith %}{% endif %}
   {% empty %}
     <div class="empty">
       <p>Try one of these:</p>
       <button class="chip">How much is a rabies vaccine?</button>
+      <button class="chip">It's 11pm and my cat ate a lily. What do I do?</button>
+      <button class="chip">How much is an MRI scan?</button>
       <button class="chip">My dog has surgery tomorrow, when should he stop eating?</button>
-      <button class="chip">Do you treat snakes?</button>
-      <button class="chip">Can I pay in installments?</button>
       <button class="chip">Book a wellness exam for Biscuit next Tuesday morning</button>
       <button class="chip">What appointments do I have coming up?</button>
     </div>
   {% endfor %}
 </div>
+{% if budget_spent %}
+  <p class="notice">The live assistant is paused for today: the demo's daily AI budget is used up. It resets at
+    midnight (US Eastern).{% if demo_public_dashboard %} Meanwhile, the <a href="{% url 'assistant:dashboard' %}">dashboard</a> shows what it costs and how it scores.{% endif %}</p>
+{% elif not remaining %}
+  <p class="notice">You've used today's messages for this demo account. Come back tomorrow{% if demo_public_dashboard %}, or have a look at the <a href="{% url 'assistant:dashboard' %}">dashboard</a>{% endif %}.</p>
+{% endif %}
 <form id="composer" class="composer" method="post" action="{% url 'assistant:send_message' %}">
   {% csrf_token %}
-  <input name="message" id="message" maxlength="1000" autocomplete="off" placeholder="Ask about prices, vaccines, surgery prep…" required>
-  <button class="button" type="submit">Send</button>
+  <input name="message" id="message" maxlength="1000" autocomplete="off" aria-label="Your question"
+         placeholder="Ask about prices or care, or book a visit…" required{% if budget_spent or not remaining %} disabled{% endif %}>
+  <button class="button" type="submit"{% if budget_spent or not remaining %} disabled{% endif %}>Send</button>
 </form>
 <p class="muted small"><span id="remaining">{{ remaining }}</span> messages left today in this demo.</p>
 {% endblock %}

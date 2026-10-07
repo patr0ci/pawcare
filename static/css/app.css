@@ -44,7 +44,9 @@ button { font: inherit; cursor: pointer; }
 .prose { max-width: 68ch; }
 .stack p { display: flex; flex-direction: column; gap: .3rem; }
 .stack input { padding: .6rem; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink); }
-.footer { text-align: center; color: var(--muted); font-size: .85rem; padding: 1.5rem 16px; border-top: 1px solid var(--line); }
+.footer { text-align: center; color: var(--muted); font-size: .85rem; padding: 1rem 16px; border-top: 1px solid var(--line); }
+.footer p { margin: .3rem 0; }
+.notice { background: var(--accent-soft); border: 1px solid var(--line); border-radius: 12px; padding: .7rem 1rem; }
 
 /* chat */
 .chat-page { width: min(820px, 100%); margin: 0 auto; padding: 1.2rem 16px 1rem; flex: 1; display: flex; flex-direction: column; }
@@ -56,6 +58,7 @@ button { font: inherit; cursor: pointer; }
 .bubble.user { align-self: flex-end; background: var(--user); }
 .bubble.assistant { align-self: flex-start; background: var(--surface); }
 .bubble .text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.bubble.error { border-color: #c0392b; }
 /* keep the newest bubble and its buttons clear of the sticky composer when scrolled into view */
 .bubble, .action { scroll-margin-bottom: 6rem; }
 .sources { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .6rem; }
@@ -64,6 +67,7 @@ button { font: inherit; cursor: pointer; }
 .empty { color: var(--muted); }
 .chip { background: var(--surface); border: 1px solid var(--line); color: var(--ink); border-radius: 999px; padding: .4rem .9rem; margin: .25rem .25rem 0 0; }
 .composer { display: flex; gap: .5rem; position: sticky; bottom: 0; background: var(--bg); padding: .6rem 0; }
+.composer :disabled { opacity: .55; cursor: not-allowed; }
 .composer input { flex: 1; min-width: 0; padding: .75rem 1rem; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font: inherit; }
 .typing::after { content: "▍"; animation: blink 1s steps(1) infinite; }
 @keyframes blink { 50% { opacity: 0; } }

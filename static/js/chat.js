@@ -35,6 +35,14 @@ function actionCard(action) {
     card.querySelector(".action-buttons").remove();
     card.querySelector(".action-title").textContent = data.status === "confirmed" ? "Done" : "No changes";
     card.classList.add(data.status || "failed");
+    if (data.status === "confirmed") {
+      // The point of the demo: the change landed in the clinic's own system, not just in the chat.
+      const link = document.createElement("a");
+      link.href = "/my-pets/";
+      link.className = "small";
+      link.textContent = "See it in My pets →";
+      card.append(link);
+    }
     bubble("assistant", data.message);
   };
   card.querySelector(".confirm").addEventListener("click", () => decide("confirm"));
@@ -72,6 +80,7 @@ async function send(question) {
   input.disabled = true;
 
   let sources = [];
+  let left;
   try {
     const response = await fetch(form.action, { method: "POST", body: payload });
     const isStream = (response.headers.get("Content-Type") || "").startsWith("text/event-stream");
@@ -80,6 +89,7 @@ async function send(question) {
       text.textContent =
         data.error ||
         (response.redirected ? "Your session has ended. Reload the page to start a new demo." : "Something went wrong.");
+      reply.classList.add("error");
       return;
     }
     const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
@@ -97,25 +107,30 @@ async function send(question) {
         if (event.type === "delta") { status.textContent = ""; text.textContent += event.text; reply.scrollIntoView({ block: "end" }); }
         if (event.type === "tool") status.textContent = `${event.label}…`;
         if (event.type === "action") { reply.append(actionCard(event)); reply.scrollIntoView({ block: "end" }); }
-        if (event.type === "error") text.textContent = event.message;
+        if (event.type === "error") { text.textContent = event.message; reply.classList.add("error"); }
         if (event.type === "done") {
           renderSources(reply, sources.filter((s) => event.cited.includes(s.number)));
           const meta = document.createElement("div");
           meta.className = "meta";
-          meta.textContent = `$${event.cost_usd.toFixed(5)}`;
+          // Same line as a reloaded message: which model answered, and what it cost in tokens, money and time.
+          meta.textContent = `${event.model} · ${event.tokens} tokens · $${event.cost_usd.toFixed(5)} · ${event.latency_ms} ms`;
           reply.append(meta);
-          const left = document.getElementById("remaining");
-          if (left && event.remaining !== undefined) left.textContent = event.remaining;
+          left = event.remaining;
+          const counter = document.getElementById("remaining");
+          if (counter && left !== undefined) counter.textContent = left;
         }
       }
     }
   } catch {
     text.textContent = "Connection lost. Please try again.";
+    reply.classList.add("error");
   } finally {
     text.classList.remove("typing");
     status.remove();
-    input.disabled = false;
-    input.focus();
+    const outOfMessages = left === 0;
+    input.disabled = outOfMessages;
+    form.querySelector("button[type=submit]").disabled = outOfMessages;
+    if (!outOfMessages) input.focus();
   }
 }
 

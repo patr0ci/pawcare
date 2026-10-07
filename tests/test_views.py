@@ -116,3 +116,20 @@ def test_healthz_reports_database_model_and_budget(client, settings):
 
     settings.LLM_PROVIDER, settings.LLM_API_KEY = "openai_compatible", ""
     assert client.get("/healthz").status_code == 503
+
+
+@pytest.mark.django_db
+def test_spent_budget_is_said_up_front_and_the_composer_is_off(client, tutor, settings):
+    settings.ASSISTANT_DAILY_BUDGET_USD = 0
+    assert b"paused for today" in client.get(reverse("home")).content
+    client.force_login(tutor.user)
+    html = client.get(reverse("assistant:chat")).content.decode()
+    assert "paused for today" in html and 'aria-label="Your question"' in html
+    assert html.count(" disabled") >= 2  # input and Send button
+
+
+@pytest.mark.django_db
+def test_live_reply_meta_matches_a_reloaded_one(client, tutor, articles):
+    client.force_login(tutor.user)
+    done = read_events(client.post(reverse("assistant:send_message"), {"message": "rabies vaccine price"}))[-1]
+    assert done["model"] == "fake" and done["tokens"] > 0 and "latency_ms" in done

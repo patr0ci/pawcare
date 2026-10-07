@@ -212,6 +212,9 @@ def answer(conversation: Conversation, question: str) -> Iterator[dict]:
     yield {
         "type": "done",
         "message_id": reply.id,
+        "model": reply.model,
+        "tokens": reply.prompt_tokens + reply.completion_tokens,
+        "latency_ms": reply.latency_ms,
         "cost_usd": float(reply.cost_usd),
         "cited": sorted(cited),
         "remaining": max(remaining, 0),

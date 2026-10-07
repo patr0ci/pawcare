@@ -53,12 +53,15 @@ def chat(request):
         request.session.pop("conversation_id", None)
         return redirect("assistant:chat")  # so a reload doesn't start yet another conversation
     conversation = current_conversation(request)
+    remaining = settings.ASSISTANT_DAILY_MESSAGE_LIMIT - Message.objects.today_for(request.user).count()
     return render(
         request,
         "assistant/chat.html",
         {
             "timeline": timeline(conversation),
-            "remaining": settings.ASSISTANT_DAILY_MESSAGE_LIMIT - Message.objects.today_for(request.user).count(),
+            "remaining": max(remaining, 0),
+            # Said up front, so nobody types a question only to be told the demo is out for the day.
+            "budget_spent": Message.objects.spent_today_usd() >= settings.ASSISTANT_DAILY_BUDGET_USD,
         },
     )
 
