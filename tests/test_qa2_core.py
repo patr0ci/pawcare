@@ -12,7 +12,7 @@ from assistant.chat import answer
 from assistant.evals.runner import run_evals, save_run
 from assistant.llm import Delta, Done, ToolCall, Usage
 from assistant.models import Conversation, Message, PendingAction
-from assistant.tools import fmt
+from assistant.tools import ToolRunner, fmt
 from clinic.models import Appointment, Service, Vet
 from tests.test_agent import ScriptedLLM, morning_slot
 from tests.test_scheduling import next_weekday
@@ -200,3 +200,9 @@ def test_eval_run_records_the_prices_its_cost_was_computed_with(articles, tmp_pa
     assert tokens["prompt"] > 0 and tokens["completion"] > 0
     assert float(run.cost_usd) == pytest.approx((tokens["prompt"] * 0.5 + tokens["completion"] * 2.0) / 1e6, abs=1e-6)
     assert json.loads(save_run(run, tmp_path / "results").read_text())["meta"]["llm_model"] == "vendor/model-x"
+
+
+@pytest.mark.django_db
+def test_pet_list_includes_weight_so_the_model_can_pick_the_service(tutor):
+    pets = ToolRunner(Conversation.objects.create(user=tutor.user)).run("list_my_pets", "{}")["pets"]
+    assert {p["name"]: p["weight_kg"] for p in pets} == {"Biscuit": 11.4, "Miso": 4.1}

@@ -20,7 +20,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "list_my_pets",
-            "description": "List the logged-in client's pets with their ids, species and allergies.",
+            "description": "List the logged-in client's pets with their ids, species, weight and allergies.",
             "parameters": {"type": "object", "properties": {}},
         },
     },
@@ -155,7 +155,15 @@ class ToolRunner:
     def tool_list_my_pets(self):
         return {
             "pets": [
-                {"id": p.id, "name": p.name, "species": p.species, "breed": p.breed, "allergies": p.allergies}
+                {
+                    "id": p.id,
+                    "name": p.name,
+                    "species": p.species,
+                    "breed": p.breed,
+                    # Some services depend on it (spay/neuter under or over 20 kg); without it the model has to ask.
+                    "weight_kg": float(p.weight_kg) if p.weight_kg is not None else None,
+                    "allergies": p.allergies,
+                }
                 for p in self.tutor.pets.all()
             ]
         }
