@@ -244,3 +244,17 @@ def test_admin_proposals_show_their_conversation_and_can_be_searched(client, tut
     assert [a.id for a in cl.result_list] == [biscuit.id]
     assert "conversation" in cl.list_display and cl.date_hierarchy == "created_at"
     assert f"Conversation {biscuit.conversation_id}" in response.content.decode()
+
+
+@pytest.mark.django_db
+def test_403_page_talks_to_staff_as_staff(client, tutor):
+    # The admin's "add" on a read-only model is a 403 for the superuser too; it used to mention a demo account.
+    staff_client(client)
+    response = client.get(reverse("admin:assistant_message_add"))
+    html = response.content.decode()
+    assert response.status_code == 403
+    assert "You don't have permission for this page or action." in html and "demo account" not in html
+
+    client.force_login(tutor.user)
+    response = client.get(reverse("assistant:dashboard"))
+    assert response.status_code == 403 and "Your demo account can use" in response.content.decode()

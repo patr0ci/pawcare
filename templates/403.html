@@ -1,7 +1,13 @@
 {% extends "base.html" %}
-{% block title %}Staff only{% endblock %}
+{% comment %}The site-wide 403 page: staff get it too (e.g. "add" on a read-only model in the admin).{% endcomment %}
+{% block title %}{% if user.is_authenticated and not user.is_staff %}Staff only{% else %}Not allowed{% endif %}{% endblock %}
 {% block content %}
+{% if user.is_authenticated and not user.is_staff %}
 <h1>This page is for the clinic's staff.</h1>
 <p class="lead">Your demo account can use the <a href="{% url 'assistant:chat' %}">assistant</a> and
   <a href="{% url 'my_pets' %}">My pets</a>, but not the staff pages.</p>
+{% else %}
+<h1>Not allowed</h1>
+<p class="lead">You don't have permission for this page or action.</p>
+{% endif %}
 {% endblock %}
