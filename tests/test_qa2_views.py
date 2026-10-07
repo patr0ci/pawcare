@@ -103,6 +103,21 @@ def test_nul_characters_are_dropped_before_validation(client, tutor, articles):
 
 
 @pytest.mark.django_db
+def test_reload_shows_a_turns_cards_after_its_reply_in_proposal_order(client, tutor):
+    client.force_login(tutor.user)
+    conversation = Conversation.objects.create(user=tutor.user)
+    session = client.session
+    session["conversation_id"] = conversation.id
+    session.save()
+    Message.objects.create(conversation=conversation, role="user", content="move both visits")
+    for summary in ("Move Biscuit", "Move Miso"):
+        PendingAction.objects.create(conversation=conversation, kind="reschedule", payload={}, summary=summary)
+    Message.objects.create(conversation=conversation, role="assistant", content="Please confirm both.")
+    html = client.get(reverse("assistant:chat")).content.decode()
+    assert html.index("Please confirm both.") < html.index("Move Biscuit") < html.index("Move Miso")
+
+
+@pytest.mark.django_db
 def test_budget_notice_names_the_clinic_time_zone(client, tutor, settings):
     settings.ASSISTANT_DAILY_BUDGET_USD = 0
     settings.TIME_ZONE = "America/Sao_Paulo"  # CLINIC_TIME_ZONE: the day (and the budget) resets at its midnight

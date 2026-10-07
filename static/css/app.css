@@ -73,7 +73,7 @@ button { font: inherit; cursor: pointer; }
 @keyframes blink { 50% { opacity: 0; } }
 .status { font-size: .82rem; color: var(--muted); font-style: italic; }
 .status:empty { display: none; }
-.action { margin-top: .7rem; border: 1px solid var(--accent); border-radius: 12px; padding: .7rem .9rem; background: var(--accent-soft); }
+.action { max-width: 85%; align-self: flex-start; border: 1px solid var(--accent); border-radius: 12px; padding: .7rem .9rem; background: var(--accent-soft); }
 .action-title { font-weight: 600; font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; color: var(--accent); }
 .action-summary { margin: .25rem 0 .6rem; }
 .action-note { margin: -.2rem 0 .6rem; }

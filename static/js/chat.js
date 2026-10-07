@@ -143,9 +143,10 @@ async function send(question) {
         if (event.type === "tool") status.textContent = `${event.label}…`;
         if (event.type === "action") {
           const card = actionCard(event, true);
+          // Next to the reply, not inside it: where a reload puts it (after this turn's earlier cards).
+          (proposed.at(-1) || reply).after(card);
           proposed.push(card);
-          reply.append(card);
-          reply.scrollIntoView({ block: "end" });
+          card.scrollIntoView({ block: "end" });
         }
         if (event.type === "error") {
           text.textContent = event.message;

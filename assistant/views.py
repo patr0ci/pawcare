@@ -42,7 +42,7 @@ def timeline(conversation: Conversation) -> list[dict]:
     """Messages and action cards in the order they happened, so a reload looks like the live chat."""
     messages = list(conversation.messages.all())
     items = [{"kind": "message", "at": m.created_at, "obj": m} for m in messages]
-    for action in conversation.actions.all():
+    for action in conversation.actions.order_by("id"):  # a turn's cards in the order they were proposed
         # A card belongs under the reply of the turn that proposed it (the reply is saved when the turn ends).
         reply = next(
             (m for m in messages if m.role == Message.Role.ASSISTANT and m.created_at >= action.created_at), None
