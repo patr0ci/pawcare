@@ -34,6 +34,10 @@ def current_conversation(request) -> Conversation:
     return conversation
 
 
+def remaining_today(user) -> int:
+    return max(settings.ASSISTANT_DAILY_MESSAGE_LIMIT - Message.objects.today_for(user).count(), 0)
+
+
 def timeline(conversation: Conversation) -> list[dict]:
     """Messages and action cards in the order they happened, so a reload looks like the live chat."""
     messages = list(conversation.messages.all())
@@ -54,13 +58,12 @@ def chat(request):
         request.session.pop("conversation_id", None)
         return redirect("assistant:chat")  # so a reload doesn't start yet another conversation
     conversation = current_conversation(request)
-    remaining = settings.ASSISTANT_DAILY_MESSAGE_LIMIT - Message.objects.today_for(request.user).count()
     return render(
         request,
         "assistant/chat.html",
         {
             "timeline": timeline(conversation),
-            "remaining": max(remaining, 0),
+            "remaining": remaining_today(request.user),
             # Said up front, so nobody types a question only to be told the demo is out for the day.
             "budget_spent": Message.objects.spent_today_usd() >= settings.ASSISTANT_DAILY_BUDGET_USD,
         },
@@ -87,6 +90,11 @@ def send_message(request):
         except Exception:
             logger.exception("Assistant failed to answer")
             error = {"type": "error", "message": "The assistant is unavailable right now. Please try again."}
+            try:
+                # The question may have been saved (and counted) before the failure, so the counter needs this too.
+                error["remaining"] = remaining_today(request.user)
+            except DatabaseError:
+                pass  # the database may be why it failed; the error still has to reach the client
             yield f"data: {json.dumps(error)}\n\n"
 
     response = StreamingHttpResponse(event_stream(), content_type="text/event-stream")

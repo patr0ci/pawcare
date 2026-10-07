@@ -108,6 +108,12 @@ async function send(question) {
 
   let sources = [];
   let left;
+  const setRemaining = (n) => {
+    if (n === undefined) return;
+    left = n;
+    const counter = document.getElementById("remaining");
+    if (counter) counter.textContent = n;
+  };
   const proposed = []; // this turn's cards, unlocked when it ends
   try {
     const response = await fetch(form.action, { method: "POST", body: payload });
@@ -141,7 +147,11 @@ async function send(question) {
           reply.append(card);
           reply.scrollIntoView({ block: "end" });
         }
-        if (event.type === "error") { text.textContent = event.message; reply.classList.add("error"); }
+        if (event.type === "error") {
+          text.textContent = event.message;
+          reply.classList.add("error");
+          setRemaining(event.remaining); // the question may have been counted before it failed
+        }
         if (event.type === "done") {
           renderSources(reply, sources.filter((s) => event.cited.includes(s.number)));
           const meta = document.createElement("div");
@@ -149,9 +159,7 @@ async function send(question) {
           // Same line as a reloaded message: which model answered, and what it cost in tokens, money and time.
           meta.textContent = `${event.model} · ${event.tokens} tokens · $${event.cost_usd.toFixed(5)} · ${event.latency_ms} ms`;
           reply.append(meta);
-          left = event.remaining;
-          const counter = document.getElementById("remaining");
-          if (counter && left !== undefined) counter.textContent = left;
+          setRemaining(event.remaining);
         }
       }
     }

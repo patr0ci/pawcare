@@ -57,7 +57,7 @@ def test_rejects_oversized_message(client, tutor):
 
 
 @pytest.mark.django_db
-def test_llm_failure_becomes_friendly_error(client, tutor, monkeypatch):
+def test_llm_failure_becomes_friendly_error(client, tutor, monkeypatch, settings):
     import assistant.views
 
     def boom(*args, **kwargs):
@@ -67,7 +67,13 @@ def test_llm_failure_becomes_friendly_error(client, tutor, monkeypatch):
     monkeypatch.setattr(assistant.views, "answer", boom)
     client.force_login(tutor.user)
     events = read_events(client.post(reverse("assistant:send_message"), {"message": "hi"}))
-    assert events == [{"type": "error", "message": "The assistant is unavailable right now. Please try again."}]
+    assert events == [
+        {
+            "type": "error",
+            "message": "The assistant is unavailable right now. Please try again.",
+            "remaining": settings.ASSISTANT_DAILY_MESSAGE_LIMIT,
+        }
+    ]
 
 
 @pytest.mark.django_db

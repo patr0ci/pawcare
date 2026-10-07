@@ -6,8 +6,10 @@ import pytest
 from django.urls import reverse
 from django.utils import timezone
 
+from assistant import chat
 from assistant.models import Conversation, Message, PendingAction
 from clinic.demo import create_demo_tutor
+from tests.test_views import read_events
 
 
 def proposal(user, **fields):
@@ -70,3 +72,20 @@ def test_expired_pending_proposal_is_still_marked_failed_on_confirm(client, tuto
     assert response.status_code == 200 and response.json()["status"] == "failed"
     again = client.post(reverse("assistant:confirm_action", args=[action.id]))
     assert again.status_code == 409 and "expired" in again.json()["message"]
+
+
+@pytest.mark.django_db
+def test_error_event_reports_remaining_messages(client, tutor, articles, settings, monkeypatch):
+    class ProviderDown:
+        model = "down"
+
+        def stream(self, messages, tools=None):
+            raise RuntimeError("provider down")
+            yield
+
+    settings.ASSISTANT_DAILY_MESSAGE_LIMIT = 5
+    monkeypatch.setattr(chat, "get_llm", lambda: ProviderDown())
+    client.force_login(tutor.user)
+    events = read_events(client.post(reverse("assistant:send_message"), {"message": "rabies vaccine price"}))
+    # The question was saved before the provider failed, so it counts: the "messages left" counter must say so.
+    assert events[-1]["type"] == "error" and events[-1]["remaining"] == 4
