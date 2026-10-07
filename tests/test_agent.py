@@ -62,7 +62,7 @@ def test_booking_is_only_proposed_until_confirmed(client, tutor, script):
     exam = Service.objects.get(name="Wellness exam")
     day = next_weekday(1)
     vet, start = morning_slot(biscuit, exam, day)
-    llm = script(
+    script(
         [("list_my_pets", {}), ("list_services", {})],
         [("find_available_slots", {"pet_id": biscuit.id, "service_id": exam.id, "date": day.isoformat()})],
         [("propose_booking", {"pet_id": biscuit.id, "service_id": exam.id, "vet_id": vet.id,

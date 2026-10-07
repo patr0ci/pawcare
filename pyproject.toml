@@ -18,8 +18,18 @@ dependencies = [
 dev = [
     "pytest>=9.1.1",
     "pytest-django>=4.14.0",
+    "ruff>=0.16",
 ]
 
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "config.settings"
 python_files = ["tests.py", "test_*.py"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+extend-exclude = ["*/migrations/*"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "DJ"]
+ignore = ["E501"]  # the formatter owns line length; long strings and comments are left alone

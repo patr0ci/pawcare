@@ -1,5 +1,6 @@
 import json
 import logging
+from datetime import timedelta
 
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
@@ -9,8 +10,6 @@ from django.db import DatabaseError, transaction
 from django.db.models import Avg, Count, Sum
 from django.db.models.functions import TruncDate
 from django.http import JsonResponse, StreamingHttpResponse
-from datetime import timedelta
-
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.text import Truncator

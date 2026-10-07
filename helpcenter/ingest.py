@@ -1,7 +1,6 @@
 """Load help-center markdown files into Article rows and (re)build their embedded chunks."""
 
 import logging
-
 from pathlib import Path
 
 from django.db import transaction

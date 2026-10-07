@@ -48,6 +48,9 @@ class Message(models.Model):
     class Meta:
         ordering = ["created_at"]
 
+    def __str__(self):
+        return f"{self.role}: {self.content[:60]}"
+
 
 class PendingAction(models.Model):
     """A write the assistant proposed. Nothing changes until the user clicks Confirm."""
