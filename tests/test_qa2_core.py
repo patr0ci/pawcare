@@ -1,7 +1,7 @@
 """Regression tests for the second QA round (assistant core: guardrail, tools, interrupted answers, evals)."""
 
 import json
-from datetime import timedelta
+from datetime import datetime, time, timedelta
 
 import pytest
 from django.urls import reverse
@@ -164,3 +164,23 @@ def test_dates_outside_this_year_show_the_year():
     assert fmt(next_year) == f"{next_year:%a} Jan 5, {now.year + 1}, 9:00 AM"
     this_year = now.replace(hour=14, minute=30)
     assert fmt(this_year) == f"{this_year:%a %b %-d}, 2:30 PM"
+
+
+@pytest.mark.django_db
+def test_reschedule_card_shows_the_old_time_and_the_new_one(tutor, script):
+    tuesday = next_weekday(1) + timedelta(weeks=1)  # far enough out for no late-change fee
+    old = timezone.make_aware(datetime.combine(tuesday, time(9)))
+    new = old + timedelta(days=3, hours=5)  # Friday, 2:00 PM
+    appointment = Appointment.objects.create(
+        pet=tutor.pets.get(name="Biscuit"),
+        vet=Vet.objects.get(name="Dr. Maya Chen"),
+        service=Service.objects.get(name="Wellness exam"),
+        starts_at=old,
+    )
+    script(
+        [("propose_reschedule", {"appointment_id": appointment.id, "starts_at": new.isoformat()})], "Please confirm."
+    )
+    events = list(answer(Conversation.objects.create(user=tutor.user), "move it to Friday afternoon"))
+    summary = next(e["summary"] for e in events if e["type"] == "action")
+    assert summary == f"Move Biscuit's Wellness exam from {fmt(old)} to {fmt(new)}"
+    assert fmt(old).endswith("9:00 AM") and fmt(new).endswith("2:00 PM")

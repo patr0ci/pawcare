@@ -229,7 +229,11 @@ class ToolRunner:
         start = parse_time(starts_at)
         services.check_slot(appointment.pet, appointment.vet, appointment.service, start, ignore=appointment)
         fee = services.late_change_fee(appointment)
-        summary = f"Move {appointment.pet.name}'s {appointment.service.name} to {fmt(start)}"
+        # Both times, so the client can tell which visit the Confirm button moves.
+        summary = (
+            f"Move {appointment.pet.name}'s {appointment.service.name} "
+            f"from {fmt(appointment.starts_at)} to {fmt(start)}"
+        )
         if fee:
             summary += f" (late change: ${fee} fee)"
         payload = {"appointment_id": appointment.id, "starts_at": start.isoformat()}
