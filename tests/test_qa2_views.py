@@ -13,9 +13,9 @@ from clinic.demo import create_demo_tutor
 from tests.test_views import read_events
 
 
-def proposal(user, **fields):
+def proposal(user, summary="x", **fields):
     conversation = Conversation.objects.create(user=user)
-    return PendingAction.objects.create(conversation=conversation, kind="cancel", payload={}, summary="x", **fields)
+    return PendingAction.objects.create(conversation=conversation, kind="cancel", payload={}, summary=summary, **fields)
 
 
 @pytest.mark.django_db
@@ -200,3 +200,47 @@ def test_budget_notice_names_the_clinic_time_zone(client, tutor, settings):
     client.force_login(tutor.user)
     html = client.get(reverse("assistant:chat")).content.decode()
     assert "midnight, America/Sao Paulo time" in html and "US Eastern" not in html
+
+
+@pytest.mark.django_db
+def test_admin_conversation_totals_survive_a_search(client, tutor):
+    # The search joined messages a second time, so the Count/Sum columns came out multiplied (3 messages read 9).
+    conversation = Conversation.objects.create(user=tutor.user)
+    for i in range(3):
+        Message.objects.create(conversation=conversation, role="user", content=f"rabies {i}", cost_usd="0.001")
+    empty = Conversation.objects.create(user=tutor.user)
+    staff_client(client)
+    url = reverse("admin:assistant_conversation_changelist")
+    detail = (conversation.messages.count(), sum(m.cost_usd for m in conversation.messages.all()))
+    for query in ("", "rabies", tutor.user.username):
+        rows = {c.id: (c.n, c.cost_sum) for c in client.get(url, {"q": query}).context["cl"].result_list}
+        assert rows[conversation.id] == detail, query
+    ordered = client.get(url, {"o": "3"}).context["cl"].result_list  # by the messages column
+    assert [(c.id, c.n, c.cost_sum) for c in ordered] == [(empty.id, 0, 0), (conversation.id, *detail)]
+
+
+@pytest.mark.django_db
+def test_admin_message_list_shows_whose_message_newest_first(client, tutor):
+    conversation = Conversation.objects.create(user=tutor.user)
+    Message.objects.create(conversation=conversation, role="user", content="first")
+    Message.objects.create(conversation=conversation, role="assistant", content="word " * 100)
+    staff_client(client)
+    response = client.get(reverse("admin:assistant_message_changelist"))
+    cl = response.context["cl"]
+    assert {"conversation", "user"} <= set(cl.list_display)
+    assert [m.content for m in cl.result_list][-1] == "first"
+    html = response.content.decode()
+    assert tutor.user.username in html and f"Conversation {conversation.id}" in html
+    assert "word word…" in html
+
+
+@pytest.mark.django_db
+def test_admin_proposals_show_their_conversation_and_can_be_searched(client, tutor):
+    biscuit = proposal(tutor.user, summary="Book Biscuit")
+    proposal(tutor.user, summary="Cancel Miso")
+    staff_client(client)
+    response = client.get(reverse("admin:assistant_pendingaction_changelist"), {"q": "biscuit"})
+    cl = response.context["cl"]
+    assert [a.id for a in cl.result_list] == [biscuit.id]
+    assert "conversation" in cl.list_display and cl.date_hierarchy == "created_at"
+    assert f"Conversation {biscuit.conversation_id}" in response.content.decode()

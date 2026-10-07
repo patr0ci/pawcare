@@ -1,5 +1,7 @@
 from django.contrib import admin
-from django.db.models import Count, Sum
+from django.db.models import Count, DecimalField, OuterRef, Subquery, Sum, Value
+from django.db.models.functions import Coalesce
+from django.utils.text import Truncator
 
 from .models import Conversation, EvalRun, Message, PendingAction
 
@@ -33,16 +35,31 @@ class PendingActionInline(ReadOnly, admin.TabularInline):
 
 @admin.register(Conversation)
 class ConversationAdmin(ReadOnly, admin.ModelAdmin):
-    list_display = ["__str__", "user", "created_at", "messages", "cost"]
+    list_display = ["__str__", "user", "created_at", "message_count", "cost"]
     date_hierarchy = "created_at"
     search_fields = ["user__username", "messages__content"]
     inlines = [MessageInline, PendingActionInline]
 
     def get_queryset(self, request):
-        return super().get_queryset(request).annotate(n=Count("messages"), cost_sum=Sum("messages__cost_usd"))
+        # Per-conversation subqueries, not Count/Sum over a join: a search on messages__content joins the
+        # messages again, and the totals came out multiplied by the number of matches.
+        messages = Message.objects.filter(conversation=OuterRef("pk")).order_by().values("conversation")
+        return (
+            super()
+            .get_queryset(request)
+            .annotate(
+                n=Coalesce(Subquery(messages.annotate(n=Count("id")).values("n")), 0),
+                cost_sum=Coalesce(
+                    Subquery(messages.annotate(c=Sum("cost_usd")).values("c")),
+                    Value(0),
+                    output_field=DecimalField(max_digits=10, decimal_places=6),
+                ),
+            )
+        )
 
-    @admin.display(ordering="n")
-    def messages(self, obj):
+    # Not named "messages": that is the reverse relation, and sorting the column ordered by a join on it.
+    @admin.display(ordering="n", description="Messages")
+    def message_count(self, obj):
         return obj.n
 
     @admin.display(ordering="cost_sum", description="Cost (USD)")
@@ -52,20 +69,28 @@ class ConversationAdmin(ReadOnly, admin.ModelAdmin):
 
 @admin.register(Message)
 class MessageAdmin(ReadOnly, admin.ModelAdmin):
-    list_display = ["created_at", "role", "short_content", "model", "cost_usd", "latency_ms"]
+    list_display = ["created_at", "conversation", "user", "role", "short_content", "model", "cost_usd", "latency_ms"]
+    list_select_related = ["conversation__user"]
     list_filter = ["role", "model"]
     search_fields = ["content"]
     date_hierarchy = "created_at"
+    ordering = ["-created_at"]
+
+    @admin.display(ordering="conversation__user__username")
+    def user(self, obj):
+        return obj.conversation.user
 
     @admin.display(description="Content")
     def short_content(self, obj):
-        return obj.content[:120]
+        return Truncator(obj.content).chars(120)
 
 
 @admin.register(PendingAction)
 class PendingActionAdmin(ReadOnly, admin.ModelAdmin):
-    list_display = ["created_at", "kind", "summary", "status"]
+    list_display = ["created_at", "conversation", "kind", "summary", "status"]
     list_filter = ["kind", "status"]
+    search_fields = ["summary"]
+    date_hierarchy = "created_at"
 
 
 @admin.register(EvalRun)
