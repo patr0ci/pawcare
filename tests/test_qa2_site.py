@@ -125,3 +125,42 @@ def test_seed_fills_an_empty_clinic():
     call_command("seed_clinic")
     assert Vet.objects.count() == 3 and Service.objects.count() == 7
     assert Vet.objects.get(name="Dr. Rafael Souza").services.filter(name="Dental cleaning").exists()
+
+
+def local(day, hour, minute=0):
+    """A time at the clinic in the week of Monday 2030-01-07."""
+    from datetime import datetime
+
+    from django.utils import timezone
+
+    return timezone.make_aware(datetime(2030, 1, day, hour, minute))
+
+
+@pytest.mark.parametrize(
+    "requested, starts_at, fee",
+    [
+        (local(6, 9), local(7, 10), 25),  # Sunday for Monday: due by Saturday 10:00, and it's read on Monday
+        (local(5, 9, 30), local(7, 10), 0),  # Saturday morning for Monday, before Saturday 10:00
+        (local(5, 10, 30), local(7, 10), 25),  # Saturday, but past the Saturday 10:00 deadline
+        (local(5, 14), local(7, 15), 25),  # Saturday after closing: received Monday 9:00, past Saturday 15:00
+        (local(6, 20), local(8, 10), 0),  # Sunday night for Tuesday: received Monday 9:00, deadline Monday 10:00
+        (local(9, 10), local(10, 10), 0),  # exactly 24 hours ahead, while open
+        (local(9, 10, 1), local(10, 10), 25),
+        (local(8, 19), local(10, 9, 30), 0),  # Tuesday evening: received Wednesday 9:00, deadline Wednesday 9:30
+        (local(9, 19), local(10, 9, 30), 25),  # Wednesday evening for Thursday morning: under 24 hours
+        (local(10, 11), local(10, 10), 0),  # already happened
+    ],
+)
+def test_late_change_fee_follows_the_published_policy(requested, starts_at, fee):
+    from clinic.models import Appointment
+    from clinic.services import late_change_fee
+
+    assert late_change_fee(Appointment(starts_at=starts_at), now=requested) == fee
+
+
+def test_completed_visits_never_have_a_late_change_fee():
+    from clinic.models import Appointment
+    from clinic.services import late_change_fee
+
+    done = Appointment(starts_at=local(7, 10), status=Appointment.Status.COMPLETED)
+    assert late_change_fee(done, now=local(7, 9)) == 0

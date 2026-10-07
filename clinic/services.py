@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from django.db import transaction
 from django.utils import timezone
 
-from .models import Appointment, Pet, Service, Tutor, Vet, available_slots
+from .models import OPENING_HOURS, Appointment, Pet, Service, Tutor, Vet, available_slots
 
 LATE_CHANGE_WINDOW = timedelta(hours=24)
 LATE_CHANGE_FEE_USD = 25
@@ -95,6 +95,30 @@ def cancel(tutor: Tutor, appointment_id: int, reason: str = "") -> Appointment:
     return appointment
 
 
-def late_change_fee(appointment: Appointment) -> int:
-    until = appointment.starts_at - timezone.now()
-    return LATE_CHANGE_FEE_USD if timedelta(0) < until < LATE_CHANGE_WINDOW else 0
+def received_at(moment: datetime) -> datetime:
+    """When the clinic gets a request sent at `moment`: right away while it's open, else when it next opens."""
+    local = timezone.localtime(moment)
+    for days in range(8):
+        day = local.date() + timedelta(days=days)
+        hours = OPENING_HOURS.get(day.weekday())
+        if not hours:
+            continue
+        opens = datetime.combine(day, hours[0], tzinfo=local.tzinfo)
+        if local < opens:
+            return opens
+        if local < datetime.combine(day, hours[1], tzinfo=local.tzinfo):
+            return moment
+    raise ValueError("OPENING_HOURS has no open day")
+
+
+def late_change_fee(appointment: Appointment, now: datetime | None = None) -> int:
+    """The published policy ("Cancellation and No-Show Policy"): free with at least 24 hours' notice. The clinic is
+    closed on Sundays, so a deadline that falls on one moves back to the same time on the last open day (a Monday
+    10:00 visit must be changed by Saturday 10:00), and a request sent while closed counts from the next opening."""
+    now = now or timezone.now()
+    if appointment.starts_at <= now or appointment.status == Appointment.Status.COMPLETED:
+        return 0
+    deadline = timezone.localtime(appointment.starts_at) - LATE_CHANGE_WINDOW
+    while deadline.weekday() not in OPENING_HOURS:
+        deadline -= timedelta(days=1)
+    return LATE_CHANGE_FEE_USD if received_at(now) > deadline else 0
