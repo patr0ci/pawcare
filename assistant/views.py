@@ -6,8 +6,8 @@ from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import redirect_to_login
 from django.core.exceptions import PermissionDenied
-from django.db import DatabaseError, transaction
-from django.db.models import Avg, Count, Sum
+from django.db import DatabaseError, connection, transaction
+from django.db.models import Avg, Case, CharField, Count, F, Sum, Value, When
 from django.db.models.functions import TruncDate
 from django.http import JsonResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -171,6 +171,19 @@ def dashboard_allowed(user) -> bool:
     return user.is_staff or settings.DEMO_PUBLIC_DASHBOARD
 
 
+def tool_call_counts(replies) -> list[tuple[str, int]]:
+    """Calls per tool name, most used first, counted by Postgres. The dashboard can be public, and loading every
+    trace of the last 30 days into memory just to count names grows with traffic."""
+    sql, params = replies.order_by().values("tool_calls").query.sql_with_params()
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"SELECT t.call->>'name', COUNT(*) FROM ({sql}) r CROSS JOIN LATERAL jsonb_array_elements(r.tool_calls) "
+            "AS t(call) GROUP BY 1 ORDER BY 2 DESC, 1",
+            params,
+        )
+        return cursor.fetchall()
+
+
 def dashboard(request):
     """Staff view: what the assistant costs, how it's used, and how it scores on the eval set.
     On the public demo (DEMO_PUBLIC_DASHBOARD) anyone can see it, with visitor names hidden."""
@@ -196,18 +209,35 @@ def dashboard(request):
     )
     by_model = replies.values("model").annotate(answers=Count("id"), cost=Sum("cost_usd")).order_by("-answers")
     top_users = (
-        replies.values("conversation__user__username")
+        # Deleted demo accounts (user NULL) would all add up to one row with no name.
+        replies.filter(conversation__user__isnull=False)
+        .values("conversation__user__username")
         .annotate(answers=Count("id"), cost=Sum("cost_usd"))
         .order_by("-cost")[:10]
     )
-    tools: dict[str, int] = {}
-    for trace in replies.exclude(tool_calls=[]).values_list("tool_calls", flat=True):
-        for call in trace:
-            tools[call["name"]] = tools.get(call["name"], 0) + 1
+    tools = dict(tool_call_counts(replies))
+    guardrail = tools.pop("guardrail", 0)  # a correction round the code adds, not a tool the model chose
     if not request.user.is_staff:
         # Public demo viewers see the numbers, not other visitors' account names.
         top_users = [u | {"conversation__user__username": f"visitor {i}"} for i, u in enumerate(top_users, 1)]
-    actions = PendingAction.objects.filter(created_at__gte=since).values("kind", "status").annotate(n=Count("id"))
+    actions = (
+        PendingAction.objects.filter(created_at__gte=since)
+        # Nobody clicked it and it can't be confirmed any more: not "pending" forever.
+        .annotate(
+            state=Case(
+                When(
+                    status=PendingAction.Status.PENDING,
+                    created_at__lt=timezone.now() - PendingAction.TTL,
+                    then=Value("expired"),
+                ),
+                default=F("status"),
+                output_field=CharField(),
+            )
+        )
+        .values("kind", "state")
+        .annotate(n=Count("id"))
+        .order_by("kind", "state")
+    )
     peak = max((d["answers"] for d in daily), default=0)
     return render(
         request,
@@ -218,7 +248,8 @@ def dashboard(request):
             "daily": [d | {"pct": round(100 * d["answers"] / peak) if peak else 0} for d in daily],
             "by_model": by_model,
             "top_users": top_users,
-            "tools": sorted(tools.items(), key=lambda t: -t[1]),
+            "tools": list(tools.items()),
+            "guardrail": guardrail,
             "actions": actions,
             "eval_run": EvalRun.objects.first(),
         },

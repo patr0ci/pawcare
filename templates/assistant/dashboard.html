@@ -13,7 +13,7 @@
   <div><span class="stat">${{ totals.cost|default:0|floatformat:4 }}</span><span class="label">LLM cost</span></div>
   <div><span class="stat">${{ cost_per_answer|floatformat:5 }}</span><span class="label">per answer</span></div>
   <div><span class="stat">{{ totals.latency|default:0|floatformat:0 }} ms</span><span class="label">avg latency</span></div>
-  <div><span class="stat">{{ totals.tokens_in|default:0 }} / {{ totals.tokens_out|default:0 }}</span><span class="label">tokens in / out</span></div>
+  <div><span class="stat">{{ totals.tokens_in|default:0|floatformat:"g" }} / {{ totals.tokens_out|default:0|floatformat:"g" }}</span><span class="label">tokens in / out</span></div>
 </div>
 
 <h2>Answers per day</h2>
@@ -29,13 +29,13 @@
   <section>
     <h2>By model</h2>
     <table><tr><th>Model</th><th>Answers</th><th>Cost</th></tr>
-      {% for m in by_model %}<tr><td>{{ m.model }}</td><td>{{ m.answers }}</td><td>${{ m.cost|floatformat:4 }}</td></tr>{% endfor %}
+      {% for m in by_model %}<tr><td>{{ m.model }}</td><td>{{ m.answers }}</td><td>${{ m.cost|floatformat:4 }}</td></tr>{% empty %}<tr><td colspan="3" class="muted">None yet</td></tr>{% endfor %}
     </table>
   </section>
   <section>
     <h2>Top users by cost</h2>
     <table><tr><th>User</th><th>Answers</th><th>Cost</th></tr>
-      {% for u in top_users %}<tr><td>{{ u.conversation__user__username }}</td><td>{{ u.answers }}</td><td>${{ u.cost|floatformat:4 }}</td></tr>{% endfor %}
+      {% for u in top_users %}<tr><td>{{ u.conversation__user__username }}</td><td>{{ u.answers }}</td><td>${{ u.cost|floatformat:4 }}</td></tr>{% empty %}<tr><td colspan="3" class="muted">None yet</td></tr>{% endfor %}
     </table>
   </section>
   <section>
@@ -43,11 +43,13 @@
     <table><tr><th>Tool</th><th>Calls</th></tr>
       {% for name, n in tools %}<tr><td><code>{{ name }}</code></td><td>{{ n }}</td></tr>{% empty %}<tr><td colspan="2" class="muted">None yet</td></tr>{% endfor %}
     </table>
+    <p class="muted small">Guardrail corrections: {{ guardrail }} (replies that said something was booked or proposed
+      with no proposal behind it, sent back to the model once)</p>
   </section>
   <section>
     <h2>Proposed actions</h2>
     <table><tr><th>Kind</th><th>Status</th><th>#</th></tr>
-      {% for a in actions %}<tr><td>{{ a.kind }}</td><td>{{ a.status }}</td><td>{{ a.n }}</td></tr>{% empty %}<tr><td colspan="3" class="muted">None yet</td></tr>{% endfor %}
+      {% for a in actions %}<tr><td>{{ a.kind }}</td><td>{{ a.state }}</td><td>{{ a.n }}</td></tr>{% empty %}<tr><td colspan="3" class="muted">None yet</td></tr>{% endfor %}
     </table>
   </section>
 </div>

@@ -3,6 +3,7 @@
 from datetime import timedelta
 
 import pytest
+from django.contrib.auth import get_user_model
 from django.urls import reverse
 from django.utils import timezone
 
@@ -115,6 +116,81 @@ def test_reload_shows_a_turns_cards_after_its_reply_in_proposal_order(client, tu
     Message.objects.create(conversation=conversation, role="assistant", content="Please confirm both.")
     html = client.get(reverse("assistant:chat")).content.decode()
     assert html.index("Please confirm both.") < html.index("Move Biscuit") < html.index("Move Miso")
+
+
+def staff_client(client):
+    client.force_login(get_user_model().objects.create_superuser("boss", password="x"))
+    return client
+
+
+@pytest.mark.django_db
+def test_dashboard_counts_tool_calls_in_the_database(client, tutor):
+    conversation = Conversation.objects.create(user=tutor.user)
+    traces = [
+        [{"name": "list_my_pets"}, {"name": "find_available_slots"}, {"name": "list_my_pets"}],
+        [{"name": "guardrail"}, {"name": "list_my_pets"}],
+        [],
+    ]
+    for trace in traces:
+        Message.objects.create(conversation=conversation, role="assistant", content="a", model="m", tool_calls=trace)
+    old = Message.objects.create(
+        conversation=conversation, role="assistant", content="a", model="m", tool_calls=[{"name": "list_services"}]
+    )
+    Message.objects.filter(id=old.id).update(created_at=timezone.now() - timedelta(days=31))
+    staff_client(client)
+    response = client.get(reverse("assistant:dashboard"))
+    # The guardrail is a correction round, not a tool the model chose; it's shown on its own.
+    assert response.context["tools"] == [("list_my_pets", 3), ("find_available_slots", 1)]
+    assert response.context["guardrail"] == 1
+    html = response.content.decode()
+    assert "<code>guardrail</code>" not in html and "Guardrail corrections: 1" in html
+
+
+@pytest.mark.django_db
+def test_dashboard_top_users_leave_out_deleted_accounts(client, tutor):
+    for user in (tutor.user, None, None):
+        conversation = Conversation.objects.create(user=user)
+        Message.objects.create(conversation=conversation, role="assistant", content="a", model="m", cost_usd="0.01")
+    staff_client(client)
+    response = client.get(reverse("assistant:dashboard"))
+    assert [u["conversation__user__username"] for u in response.context["top_users"]] == [tutor.user.username]
+    assert response.context["totals"]["answers"] == 3  # still counted in the totals
+
+
+@pytest.mark.django_db
+def test_dashboard_shows_old_pending_proposals_as_expired(client, tutor):
+    stale = proposal(tutor.user)
+    PendingAction.objects.filter(id=stale.id).update(
+        created_at=timezone.now() - PendingAction.TTL - timedelta(minutes=1)
+    )
+    proposal(tutor.user)
+    proposal(tutor.user, status="confirmed")
+    PendingAction.objects.create(conversation=stale.conversation, kind="book", payload={}, summary="y")
+    staff_client(client)
+    rows = [(a["kind"], a["state"], a["n"]) for a in client.get(reverse("assistant:dashboard")).context["actions"]]
+    assert rows == [
+        ("book", "pending", 1),
+        ("cancel", "confirmed", 1),
+        ("cancel", "expired", 1),
+        ("cancel", "pending", 1),
+    ]
+
+
+@pytest.mark.django_db
+def test_dashboard_empty_tables_and_big_numbers(client, tutor):
+    staff_client(client)
+    html = client.get(reverse("assistant:dashboard")).content.decode()
+    assert html.count("None yet") == 4  # by model, top users, tool calls, proposed actions
+    conversation = Conversation.objects.create(user=tutor.user)
+    Message.objects.create(
+        conversation=conversation,
+        role="assistant",
+        content="a",
+        model="m",
+        prompt_tokens=1234567,
+        completion_tokens=8901,
+    )
+    assert "1,234,567 / 8,901" in client.get(reverse("assistant:dashboard")).content.decode()
 
 
 @pytest.mark.django_db
