@@ -18,7 +18,7 @@ function bubble(role, text = "") {
 
 const csrf = () => form.querySelector("[name=csrfmiddlewaretoken]").value;
 
-function actionCard(action) {
+function actionCard(action, waiting = false) {
   // A proposed write. Nothing happens on the server until the user clicks Confirm.
   const card = document.createElement("div");
   card.className = "action";
@@ -26,6 +26,9 @@ function actionCard(action) {
     <div class="action-buttons"><button class="button confirm">Confirm</button><button class="link dismiss">Not now</button></div>`;
   card.querySelector(".action-summary").textContent = action.summary;
   const buttons = card.querySelectorAll("button");
+  // Proposed mid-turn: locked until the turn's reply is saved. Confirming earlier logged "Booked: ..." before
+  // that reply, so after a reload the two showed in the wrong order.
+  buttons.forEach((b) => (b.disabled = waiting));
   const note = (text) => {
     const el = document.createElement("div");
     el.className = "action-note small";
@@ -105,6 +108,7 @@ async function send(question) {
 
   let sources = [];
   let left;
+  const proposed = []; // this turn's cards, unlocked when it ends
   try {
     const response = await fetch(form.action, { method: "POST", body: payload });
     const isStream = (response.headers.get("Content-Type") || "").startsWith("text/event-stream");
@@ -131,7 +135,12 @@ async function send(question) {
         if (event.type === "sources") sources = event.sources;
         if (event.type === "delta") { status.textContent = ""; text.textContent += event.text; reply.scrollIntoView({ block: "end" }); }
         if (event.type === "tool") status.textContent = `${event.label}…`;
-        if (event.type === "action") { reply.append(actionCard(event)); reply.scrollIntoView({ block: "end" }); }
+        if (event.type === "action") {
+          const card = actionCard(event, true);
+          proposed.push(card);
+          reply.append(card);
+          reply.scrollIntoView({ block: "end" });
+        }
         if (event.type === "error") { text.textContent = event.message; reply.classList.add("error"); }
         if (event.type === "done") {
           renderSources(reply, sources.filter((s) => event.cited.includes(s.number)));
@@ -156,6 +165,8 @@ async function send(question) {
     input.disabled = outOfMessages;
     form.querySelector("button[type=submit]").disabled = outOfMessages;
     if (!outOfMessages) input.focus();
+    // After done or error the reply is saved; a stream that just dropped has nothing left to wait for either.
+    proposed.forEach((card) => card.querySelectorAll("button").forEach((b) => (b.disabled = false)));
   }
 }
 
