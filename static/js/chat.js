@@ -90,6 +90,7 @@ async function send(question) {
         data.error ||
         (response.redirected ? "Your session has ended. Reload the page to start a new demo." : "Something went wrong.");
       reply.classList.add("error");
+      if (response.status === 429) left = 0; // daily limit or budget: nothing more to send today
       return;
     }
     const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
@@ -141,5 +142,5 @@ form.addEventListener("submit", (e) => {
 });
 
 log.addEventListener("click", (e) => {
-  if (e.target.classList.contains("chip")) send(e.target.textContent);
+  if (e.target.classList.contains("chip") && !input.disabled) send(e.target.textContent);
 });

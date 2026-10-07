@@ -52,6 +52,6 @@
          placeholder="Ask about prices or care, or book a visit…" required{% if budget_spent or not remaining %} disabled{% endif %}>
   <button class="button" type="submit"{% if budget_spent or not remaining %} disabled{% endif %}>Send</button>
 </form>
-<p class="muted small"><span id="remaining">{{ remaining }}</span> messages left today in this demo.</p>
+{% if not budget_spent %}<p class="muted small"><span id="remaining">{{ remaining }}</span> messages left today in this demo.</p>{% endif %}
 {% endblock %}
 {% block scripts %}<script src="{% static 'js/chat.js' %}"></script>{% endblock %}

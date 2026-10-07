@@ -108,14 +108,25 @@ def test_validation_errors_are_json(client, tutor):
 @pytest.mark.django_db
 def test_healthz_reports_database_model_and_budget(client, settings):
     data = client.get("/healthz").json()
-    assert data["ok"] and data["database"] and data["llm_configured"] and data["assistant_available"]
+    assert data == {"ok": True, "database": True, "llm_configured": True, "assistant_available": True}
 
     settings.ASSISTANT_DAILY_BUDGET_USD = 0  # budget spent: reported, but the container stays healthy
     response = client.get("/healthz")
     assert response.status_code == 200 and response.json()["assistant_available"] is False
 
+    # A missing key is something to alert on, not a reason for the healthcheck to take the whole site down.
+    settings.ASSISTANT_DAILY_BUDGET_USD = 1
     settings.LLM_PROVIDER, settings.LLM_API_KEY = "openai_compatible", ""
-    assert client.get("/healthz").status_code == 503
+    response = client.get("/healthz")
+    assert response.status_code == 200 and response.json()["llm_configured"] is False
+    assert response.json()["assistant_available"] is False
+
+
+@pytest.mark.django_db
+def test_staff_pages_explain_themselves_to_demo_visitors(client, tutor):
+    client.force_login(tutor.user)
+    response = client.get(reverse("assistant:dashboard"))
+    assert response.status_code == 403 and b"for the clinic's staff" in response.content
 
 
 @pytest.mark.django_db
