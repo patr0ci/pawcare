@@ -18,7 +18,7 @@ can test, monitor and pay for predictably.
   site-wide daily caps.
 - **37 eval cases run against the real model**: 27 help-center questions, and 10 booking conversations scored on the
   proposal the model actually created, not on its wording.
-- **75 offline tests in CI**, including the agent's safety rules: nothing is written before Confirm, and tools can't
+- **100 offline tests in CI**, including the agent's safety rules: nothing is written before Confirm, and tools can't
   reach another client's pets.
 
 ## What it does
@@ -50,7 +50,9 @@ the slot and replied *"I've set up a proposal… please confirm the proposal"* �
 there was no Confirm button. It's the same failure the model comparison below had pinned on an older model. Two fixes:
 
 - **A guardrail**: a reply that claims a proposal when none exists gets one corrective round, so the model either makes
-  the proposal or takes the claim back (`is_unbacked_claim` in [`assistant/chat.py`](assistant/chat.py)).
+  the proposal or takes the claim back. After a tool call, the reply is checked before the client sees it, so the false
+  claim is never shown (`claims_action` and `is_unbacked_claim` in [`assistant/chat.py`](assistant/chat.py), with the
+  phrasings it must and must not catch pinned in `tests/test_agent.py`).
 - **An agent eval suite** ([`agent_cases.json`](assistant/evals/agent_cases.json)): 10 conversations with a throwaway
   client — book, reschedule, cancel, a late cancellation that must mention the fee, an ambiguous pet, a change of
   mind, "list my appointments" (which must not act), and an instruction hidden in a pet's allergies field. Each is
@@ -106,7 +108,7 @@ the public demo. The agent eval suite makes the comparison repeatable:
 - **Dashboard** (`/assistant/dashboard/`, public on the demo with visitor names hidden): answers, cost per answer,
   latency, tokens, cost by model and by user, tool calls, proposed vs confirmed actions, and the latest eval run. In the
   Django admin, staff can open any conversation with its tool trace (read-only).
-- **Ops.** Logs to stdout, `/healthz` (database, model configured, budget left) for uptime monitors and the container
+- **Ops.** Logs to stdout, `/healthz` (database up, and whether the assistant can answer: model configured, budget left) for uptime monitors and the container
   healthcheck, and demo bookings cleared hourly so visitors don't fill the shared calendar.
 
 ```
