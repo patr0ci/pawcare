@@ -16,7 +16,10 @@ services:
     restart: unless-stopped
 
   web:
-    build: .
+    build:
+      context: .
+      args:
+        GIT_SHA: ${GIT_SHA:-}
     env_file: .env
     environment:
       POSTGRES_HOST: db
@@ -27,6 +30,13 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    healthcheck:
+      # Host header: ALLOWED_HOSTS only has the public domain. Long start: first boot migrates, seeds and indexes.
+      test: ["CMD", "python", "-c", "import os, urllib.request as u; u.urlopen(u.Request('http://localhost:8000/healthz', headers={'Host': os.environ['DJANGO_ALLOWED_HOSTS'].split(',')[0]}), timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      start_period: 180s
+      retries: 3
     restart: unless-stopped
 
   caddy:
@@ -37,7 +47,9 @@ services:
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
-    depends_on: [web]
+    depends_on:
+      web:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:

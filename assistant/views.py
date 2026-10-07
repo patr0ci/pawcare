@@ -5,7 +5,7 @@ from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import redirect_to_login
 from django.core.exceptions import PermissionDenied
-from django.db import transaction
+from django.db import DatabaseError, transaction
 from django.db.models import Avg, Count, Sum
 from django.db.models.functions import TruncDate
 from django.http import JsonResponse, StreamingHttpResponse
@@ -191,4 +191,26 @@ def dashboard(request):
             "actions": actions,
             "eval_run": EvalRun.objects.first(),
         },
+    )
+
+
+def health(request):
+    """For uptime monitors and the container healthcheck. 503 when the app can't work at all; a spent daily
+    budget is reported (assistant_available: false) without failing the check, so Docker doesn't flag it."""
+    llm_configured = settings.LLM_PROVIDER == "fake" or bool(settings.LLM_API_KEY)
+    try:
+        budget_left = settings.ASSISTANT_DAILY_BUDGET_USD - Message.objects.spent_today_usd()
+        database = True
+    except DatabaseError:
+        budget_left, database = 0.0, False
+    ok = database and llm_configured
+    return JsonResponse(
+        {
+            "ok": ok,
+            "database": database,
+            "llm_configured": llm_configured,
+            "assistant_available": ok and budget_left > 0,
+            "budget_left_usd": round(max(budget_left, 0), 4),
+        },
+        status=200 if ok else 503,
     )

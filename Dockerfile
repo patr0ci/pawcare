@@ -8,6 +8,10 @@ ENV PYTHONUNBUFFERED=1 \
     PATH="/app/.venv/bin:$PATH" \
     EMBEDDING_CACHE_DIR=/app/.cache/fastembed
 
+# Recorded with each eval run (the image has no .git). Set with: GIT_SHA=$(git rev-parse --short HEAD) docker compose ... build
+ARG GIT_SHA=""
+ENV GIT_SHA=$GIT_SHA
+
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project

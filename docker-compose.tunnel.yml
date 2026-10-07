@@ -21,7 +21,10 @@ services:
     restart: unless-stopped
 
   web:
-    build: .
+    build:
+      context: .
+      args:
+        GIT_SHA: ${GIT_SHA:-}
     env_file:
       - .env
       - path: .env.local
@@ -38,6 +41,13 @@ services:
     deploy:
       resources:
         limits: {cpus: "2", memory: 1536M}
+    healthcheck:
+      # Host header: ALLOWED_HOSTS only has the public domain. Long start: first boot migrates, seeds and indexes.
+      test: ["CMD", "python", "-c", "import os, urllib.request as u; u.urlopen(u.Request('http://localhost:8000/healthz', headers={'Host': os.environ['DJANGO_ALLOWED_HOSTS'].split(',')[0]}), timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      start_period: 180s
+      retries: 3
     restart: unless-stopped
 
   tunnel:
@@ -45,7 +55,9 @@ services:
     command: tunnel --no-autoupdate run
     environment:
       TUNNEL_TOKEN: ${TUNNEL_TOKEN:?set TUNNEL_TOKEN}
-    depends_on: [web]
+    depends_on:
+      web:
+        condition: service_healthy
     deploy:
       resources:
         limits: {cpus: "0.5", memory: 256M}

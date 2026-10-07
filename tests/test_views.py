@@ -103,3 +103,16 @@ def test_validation_errors_are_json(client, tutor):
     client.force_login(tutor.user)
     response = client.post(reverse("assistant:send_message"), {"message": ""})
     assert response.status_code == 400 and "1000" in response.json()["error"]
+
+
+@pytest.mark.django_db
+def test_healthz_reports_database_model_and_budget(client, settings):
+    data = client.get("/healthz").json()
+    assert data["ok"] and data["database"] and data["llm_configured"] and data["assistant_available"]
+
+    settings.ASSISTANT_DAILY_BUDGET_USD = 0  # budget spent: reported, but the container stays healthy
+    response = client.get("/healthz")
+    assert response.status_code == 200 and response.json()["assistant_available"] is False
+
+    settings.LLM_PROVIDER, settings.LLM_API_KEY = "openai_compatible", ""
+    assert client.get("/healthz").status_code == 503
