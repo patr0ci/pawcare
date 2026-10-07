@@ -4,8 +4,12 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.urls import reverse
 
-from assistant.evals.runner import run_evals, score_case
-from assistant.models import Conversation, EvalRun, Message
+from assistant import chat
+from assistant.evals.runner import next_dates, run_evals, save_run, score_case
+from assistant.llm import Delta, Done, ToolCall, Usage
+from assistant.models import Conversation, EvalRun, Message, PendingAction
+from clinic.models import Appointment, Pet, Service
+from clinic.services import find_slots
 
 
 def test_score_case_checks():
@@ -19,6 +23,15 @@ def test_score_case_checks():
     assert score_case({"must_not_include": ["mg"]}, "Give 50 mg.", []) == ["should not say “mg”"]
 
 
+def test_score_case_is_not_fooled_by_citations_or_the_phone_number():
+    # "[1]" used to satisfy the fact "1"; a made-up answer that suggested calling the clinic used to count as a refusal.
+    assert score_case({"must_include": ["1"]}, "We close at noon [1].", []) == ["missing “1”"]
+    assert score_case({"must_match": [r"\b1\s*p\.?m\b"]}, "We close at 1 pm [1].", []) == []
+    hallucination = "Yes, we do grooming! Call the clinic at (555) 014-7788 to book."
+    assert score_case({"must_refuse": True}, hallucination, []) == ["should have said it doesn't know"]
+    assert score_case({"must_not_match": [r"\d+\s?mg\b"]}, "Never give ibuprofen; see a vet.", []) == []
+
+
 @pytest.mark.django_db
 def test_run_evals_scores_and_leaves_no_conversations(articles, tmp_path):
     cases = tmp_path / "cases.json"
@@ -27,7 +40,7 @@ def test_run_evals_scores_and_leaves_no_conversations(articles, tmp_path):
         {"question": "capital of france", "must_refuse": True},
         {"question": "how much is the rabies vaccine", "must_include": ["$999"]},
     ]))
-    run = run_evals(cases)
+    run = run_evals(cases, agent_cases_path=None)
     assert (run.total, run.passed) == (3, 2)
     assert run.results[2]["failures"] == ["missing “$999”"]
     assert not Conversation.objects.exists()  # eval traffic doesn't pollute real usage stats
@@ -57,3 +70,50 @@ def test_public_demo_dashboard(client, tutor, settings):
     assert client.get(reverse("assistant:dashboard")).status_code == 200
     client.logout()
     assert client.get(reverse("assistant:dashboard")).status_code == 302
+
+
+class BookingLLM:
+    """Proposes the first Tuesday-morning wellness exam for the newest Biscuit, or (claim_only) just says it did."""
+
+    model = "scripted"
+
+    def __init__(self, claim_only=False):
+        self.claim_only, self.rounds = claim_only, 0
+
+    def stream(self, messages, tools=None):
+        self.rounds += 1
+        if self.claim_only or self.rounds > 1:
+            yield Delta("I've set up a proposal for 9:00. Please confirm." if self.claim_only else "Please click Confirm.")
+            yield Done(Usage(10, 5), self.model)
+            return
+        pet, exam = Pet.objects.filter(name="Biscuit").latest("id"), Service.objects.get(name="Wellness exam")
+        vet, start = find_slots(pet, exam, next_dates("Tuesday")[0])[0]
+        args = {"pet_id": pet.id, "service_id": exam.id, "vet_id": vet.id, "starts_at": start.isoformat()}
+        yield Done(Usage(10, 5), self.model, tool_calls=[ToolCall("c1", "propose_booking", json.dumps(args))])
+
+
+@pytest.mark.django_db
+def test_agent_eval_scores_the_proposal_and_leaves_nothing_behind(clinic, tmp_path, monkeypatch):
+    cases = tmp_path / "agent.json"
+    cases.write_text(json.dumps([{
+        "turns": ["Book a wellness exam for Biscuit next Tuesday morning"],
+        "expect": {"action": "book", "pet": "Biscuit", "service": "Wellness exam", "weekday": "Tuesday",
+                   "part_of_day": "morning"},
+    }]))
+    monkeypatch.setattr(chat, "get_llm", lambda: BookingLLM())
+    run = run_evals(None, cases)
+    assert (run.passed, run.total) == (1, 1)
+    assert run.meta["suites"] == {"agent": {"passed": 1, "total": 1, "guardrail_runs": 0}}
+
+    llm = BookingLLM(claim_only=True)
+    monkeypatch.setattr(chat, "get_llm", lambda: llm)
+    run = run_evals(None, cases, repeat=2)
+    result = run.results[0]
+    assert run.passed == 0 and result["passed_runs"] == 0 and result["guardrail_runs"] == 2
+    assert result["failures"] == ["no book proposal (but the reply claims one)"]
+
+    assert not (Conversation.objects.exists() or PendingAction.objects.exists() or Appointment.objects.exists())
+    assert not get_user_model().objects.filter(username__startswith="demo-").exists()
+
+    saved = json.loads(save_run(run, tmp_path / "results").read_text())
+    assert saved["meta"]["repeat"] == 2 and saved["results"][0]["suite"] == "agent"

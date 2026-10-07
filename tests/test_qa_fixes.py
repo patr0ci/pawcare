@@ -119,7 +119,7 @@ def test_eval_run_survives_a_failing_case(articles, tmp_path, monkeypatch):
     monkeypatch.setattr(runner, "answer", flaky)
     cases = tmp_path / "cases.json"
     cases.write_text(json.dumps([{"question": "boom"}, {"question": "rabies vaccine price", "must_include": ["$28"]}]))
-    run = run_evals(cases)
+    run = run_evals(cases, agent_cases_path=None)
     assert (run.total, run.passed) == (2, 1)
     assert run.results[0]["failures"][0].startswith("error: RuntimeError")
 

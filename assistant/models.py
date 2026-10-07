@@ -90,9 +90,14 @@ class EvalRun(models.Model):
     passed = models.PositiveIntegerField(default=0)
     cost_usd = models.DecimalField(max_digits=10, decimal_places=6, default=0)
     results = models.JSONField(default=list)
+    # git sha, prompt and case hashes, repeats and per-suite scores, so two runs can be compared.
+    meta = models.JSONField(default=dict, blank=True)
 
     class Meta:
         ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.passed}/{self.total} · {self.model} · {self.created_at:%Y-%m-%d %H:%M}"
 
     @property
     def score(self) -> float:
