@@ -89,3 +89,14 @@ def test_error_event_reports_remaining_messages(client, tutor, articles, setting
     events = read_events(client.post(reverse("assistant:send_message"), {"message": "rabies vaccine price"}))
     # The question was saved before the provider failed, so it counts: the "messages left" counter must say so.
     assert events[-1]["type"] == "error" and events[-1]["remaining"] == 4
+
+
+@pytest.mark.django_db
+def test_nul_characters_are_dropped_before_validation(client, tutor, articles):
+    # Postgres can't store NUL: it used to pass validation and fail only after retrieval, as "unavailable".
+    client.force_login(tutor.user)
+    response = client.post(reverse("assistant:send_message"), {"message": "\x00 \x00"})
+    assert response.status_code == 400 and "1000" in response.json()["error"]
+    events = read_events(client.post(reverse("assistant:send_message"), {"message": "rabies\x00 vaccine price"}))
+    assert events[-1]["type"] == "done"
+    assert Message.objects.get(role="user").content == "rabies vaccine price"

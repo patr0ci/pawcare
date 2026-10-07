@@ -73,7 +73,8 @@ def chat(request):
 @login_required
 @require_POST
 def send_message(request):
-    question = request.POST.get("message", "").strip()
+    # Postgres can't store NUL; left in, the question passed this check and failed only after retrieval.
+    question = request.POST.get("message", "").replace("\x00", "").strip()
     if not question or len(question) > MAX_QUESTION_CHARS:
         return JsonResponse({"error": "Message must be between 1 and 1000 characters."}, status=400)
     if Message.objects.today_for(request.user).count() >= settings.ASSISTANT_DAILY_MESSAGE_LIMIT:
