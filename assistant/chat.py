@@ -20,6 +20,9 @@ from .tools import STATUS_LABELS, TOOLS, ToolRunner
 HISTORY_TURNS = 6
 MAX_TOOL_ROUNDS = 6
 ANSWER_DEADLINE_S = 90  # no new LLM round starts after this; each call also has its own timeout
+# Saved when an answer fails before any text: the same words the chat view shows live, so a reload matches.
+UNAVAILABLE = "The assistant is unavailable right now. Please try again."
+INTERRUPTED = "\n\n(answer interrupted)"
 
 # Seen on the public demo: the model wrote "I've set up a proposal, please confirm" without calling propose_booking,
 # so there was no Confirm button. A reply that claims an action needs a proposal behind it; if there is none, the
@@ -164,7 +167,8 @@ def answer(conversation: Conversation, question: str) -> Iterator[dict]:
     """Yields SSE-ready events: sources, tool (status), action (needs confirmation), delta, done.
 
     The reply (with usage and the tool trace) is saved even if the provider fails mid-way or the client
-    disconnects, so the dashboard counts what was actually spent."""
+    disconnects, so the dashboard and the daily budget count what was actually spent. A reply cut short ends
+    with "(answer interrupted)", so neither a reload nor the model's history takes it for a whole answer."""
     started = time.monotonic()
     llm = get_llm()  # fails before anything is saved if the deploy has no model configured
     sources = retrieve(retrieval_queries(conversation, question))
@@ -174,7 +178,11 @@ def answer(conversation: Conversation, question: str) -> Iterator[dict]:
 
     runner = ToolRunner(conversation)
     usage, model, parts, trace = Usage(), "", [], []
-    reply, nudged = None, False
+    reply, nudged, finished = None, False, False
+    # The round in progress, for `finally` if the answer is cut short: where its text starts, whether that text
+    # is held back, and whether the provider started the round without finishing it (so no usage came back).
+    round_start, open_round = 0, False
+    held: list[str] | None = None
     try:
         for round_no in range(MAX_TOOL_ROUNDS):
             if time.monotonic() - started > ANSWER_DEADLINE_S:
@@ -184,8 +192,9 @@ def answer(conversation: Conversation, question: str) -> Iterator[dict]:
             done, round_has_text, round_start = None, False, len(parts)
             # After a tool call, a reply is held back until it's checked for an unbacked claim, so a false
             # "I've booked it" never reaches the client. Answers that need no tools still stream token by token.
-            held: list[str] | None = [] if trace else None
+            held = [] if trace else None
             for event in llm.stream(messages, tools=TOOLS):
+                open_round = True
                 if isinstance(event, Delta):
                     text = event.text
                     if parts and not round_has_text and not parts[-1][-1:].isspace():
@@ -197,7 +206,7 @@ def answer(conversation: Conversation, question: str) -> Iterator[dict]:
                     else:
                         held.append(text)
                 elif isinstance(event, Done):
-                    done = event
+                    done, open_round = event, False
             usage = Usage(
                 usage.prompt_tokens + done.usage.prompt_tokens, usage.completion_tokens + done.usage.completion_tokens
             )
@@ -248,8 +257,23 @@ def answer(conversation: Conversation, question: str) -> Iterator[dict]:
         if not "".join(parts).strip():
             parts.append("Sorry, I couldn't come up with an answer. Could you rephrase that?")
             yield {"type": "delta", "text": parts[-1]}
+        finished = True
     finally:
-        content = "".join(parts).strip() or "(no answer: the assistant failed before replying)"
+        if open_round:
+            # Usage only comes with Done, so a round cut short (tab closed, stream dropped) would cost $0 and the
+            # daily budget would undercount. Estimate it at ~4 characters per token. A call that failed before
+            # sending anything isn't counted: most likely the provider rejected it, and that isn't billed.
+            usage = Usage(
+                usage.prompt_tokens + len(json.dumps(messages)) // 4,
+                usage.completion_tokens + len("".join(parts[round_start:])) // 4,
+            )
+            if held is not None:
+                del parts[round_start:]  # never checked for a false claim, and the client never saw it
+        content = "".join(parts).strip()
+        if not content:
+            content = UNAVAILABLE
+        elif not finished:
+            content += INTERRUPTED
         cited = cited_numbers(content)
         reply = Message.objects.create(
             conversation=conversation,

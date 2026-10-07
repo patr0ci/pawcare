@@ -1,5 +1,6 @@
 """Regression tests for the second QA round (assistant core: guardrail, tools, interrupted answers, evals)."""
 
+import json
 from datetime import timedelta
 
 import pytest
@@ -8,10 +9,12 @@ from django.utils import timezone
 
 from assistant import chat
 from assistant.chat import answer
-from assistant.models import Conversation, PendingAction
+from assistant.llm import Delta, Done, ToolCall, Usage
+from assistant.models import Conversation, Message, PendingAction
 from clinic.models import Appointment, Service, Vet
 from tests.test_agent import ScriptedLLM, morning_slot
 from tests.test_scheduling import next_weekday
+from tests.test_views import read_events
 
 
 @pytest.fixture
@@ -92,3 +95,63 @@ def test_cancellation_with_an_odd_reason_can_still_be_confirmed(client, tutor, s
     appointment.refresh_from_db()
     assert appointment.status == Appointment.Status.CANCELLED
     assert appointment.cancellation_reason == ("" if reason is None else str(reason))
+
+
+class StreamingLLM(ScriptedLLM):
+    """Each round is a list of events; an exception in the list is raised at that point (a dropped stream)."""
+
+    def stream(self, messages, tools=None):
+        self.seen_messages.append(list(messages))
+        for event in self.rounds.pop(0):
+            if isinstance(event, Exception):
+                raise event
+            yield event
+
+
+@pytest.mark.django_db
+def test_closing_the_tab_mid_answer_saves_a_marked_reply_with_an_estimated_cost(tutor, monkeypatch, settings):
+    settings.LLM_PRICE_INPUT_PER_M, settings.LLM_PRICE_OUTPUT_PER_M = 1.0, 2.0
+    llm = StreamingLLM([[Delta("Rabies costs $28."), Delta(" DHPP costs $35."), Done(Usage(100, 20), "m")]])
+    monkeypatch.setattr(chat, "get_llm", lambda: llm)
+    conversation = Conversation.objects.create(user=tutor.user)
+    stream = answer(conversation, "vaccine prices?")
+    assert [next(stream)["type"], next(stream)["type"]] == ["sources", "delta"]
+    stream.close()  # what the server does when the visitor closes the tab
+
+    reply = conversation.messages.get(role="assistant")
+    assert reply.content == "Rabies costs $28.\n\n(answer interrupted)"
+    # Usage only comes with Done, so the round is estimated instead of counting as free.
+    assert reply.prompt_tokens == len(json.dumps(llm.seen_messages[0])) // 4
+    assert reply.completion_tokens == len("Rabies costs $28.") // 4
+    assert reply.cost_usd > 0
+
+
+@pytest.mark.django_db
+def test_a_dropped_stream_never_saves_text_that_was_held_back(tutor, monkeypatch):
+    llm = StreamingLLM(
+        [
+            [Delta("Let me check."), Done(Usage(100, 10), "m", tool_calls=[ToolCall("c", "list_my_pets", "{}")])],
+            [Delta("I've booked Biscuit for 9:00."), RuntimeError("stream dropped")],  # not checked yet
+        ]
+    )
+    monkeypatch.setattr(chat, "get_llm", lambda: llm)
+    conversation = Conversation.objects.create(user=tutor.user)
+    shown = []
+    with pytest.raises(RuntimeError):
+        for event in answer(conversation, "book Biscuit"):
+            shown += [event["text"]] if event["type"] == "delta" else []
+
+    reply = conversation.messages.get(role="assistant")
+    assert shown == ["Let me check."]
+    assert reply.content == "Let me check.\n\n(answer interrupted)"
+    assert reply.completion_tokens == 10 + len("\n\nI've booked Biscuit for 9:00.") // 4
+
+
+@pytest.mark.django_db
+def test_a_reply_that_failed_before_any_text_reads_like_the_live_error(client, tutor, monkeypatch):
+    monkeypatch.setattr(chat, "get_llm", lambda: StreamingLLM([[RuntimeError("provider down")]]))
+    client.force_login(tutor.user)
+    events = read_events(client.post(reverse("assistant:send_message"), {"message": "hi"}))
+    reply = Message.objects.get(role="assistant")
+    assert events[-1] == {"type": "error", "message": reply.content}
+    assert reply.cost_usd == 0  # nothing came back: most likely rejected, so not billed
