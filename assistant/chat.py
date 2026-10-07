@@ -101,12 +101,18 @@ def claims_action(text: str) -> bool:
     return False
 
 
-def is_unbacked_claim(conversation: Conversation, runner: ToolRunner, text: str) -> bool:
-    """The reply claims an action, nothing was proposed in this turn, and the previous turn didn't leave a proposal
-    to talk about (a card still waiting, or one the client just confirmed). Known gap: a claim about a *new* action
-    made right after such a card isn't caught here; the agent eval's change-of-mind case is there for that."""
+def is_unbacked_claim(conversation: Conversation, runner: ToolRunner, text: str, trace: list[dict]) -> bool:
+    """The reply claims an action and nothing was proposed in this turn. A proposal the previous turn left (a card
+    still waiting, or one the client just confirmed) excuses the claim only if this turn didn't look up free times:
+    then the reply is about that card ("did you book it?" → "please click Confirm above"). After a slot search the
+    model is setting up something new, and the card on screen may be for another pet (seen in QA: with Biscuit's
+    card waiting, "book Miso..." got "I've set up a proposal, please click Confirm", and that Confirm booked
+    Biscuit). Known gap: a new action that needs no slot search (a cancellation, "same time for Miso") right after
+    such a card isn't caught here; the agent eval's change-of-mind case is there for that."""
     if runner.proposed or not claims_action(text):
         return False
+    if any(call["name"] == "find_available_slots" for call in trace):
+        return True
     recent = conversation.actions.filter(created_at__gte=timezone.now() - PendingAction.TTL)
     previous_question = conversation.messages.filter(role=Message.Role.USER).order_by("-created_at")[1:2].first()
     if previous_question:
@@ -202,7 +208,7 @@ def answer(conversation: Conversation, question: str) -> Iterator[dict]:
                 not done.tool_calls
                 and not nudged
                 and round_no < MAX_TOOL_ROUNDS - 2
-                and is_unbacked_claim(conversation, runner, round_text)
+                and is_unbacked_claim(conversation, runner, round_text, trace)
             ):
                 nudged = True
                 trace.append({"name": "guardrail", "arguments": "{}", "result": {"unbacked_claim": round_text[:300]}})
