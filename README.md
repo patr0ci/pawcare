@@ -18,7 +18,7 @@ can test, monitor and pay for predictably.
   site-wide daily caps.
 - **37 eval cases run against the real model**: 27 help-center questions, and 10 booking conversations scored on the
   proposal the model actually created, not on its wording.
-- **100 offline tests in CI**, including the agent's safety rules: nothing is written before Confirm, and tools can't
+- **165 offline tests in CI**, including the agent's safety rules: nothing is written before Confirm, and tools can't
   reach another client's pets.
 
 ## What it does
@@ -50,9 +50,11 @@ the slot and replied *"I've set up a proposal… please confirm the proposal"* �
 there was no Confirm button. It's the same failure the model comparison below had pinned on an older model. Two fixes:
 
 - **A guardrail**: a reply that claims a proposal when none exists gets one corrective round, so the model either makes
-  the proposal or takes the claim back. After a tool call, the reply is checked before the client sees it, so the false
-  claim is never shown (`claims_action` and `is_unbacked_claim` in [`assistant/chat.py`](assistant/chat.py), with the
-  phrasings it must and must not catch pinned in `tests/test_agent.py`).
+  the proposal or takes the claim back. After a tool call, the reply is checked before the client sees it, so a false
+  claim made while booking is never shown. A card left from the previous turn only excuses a reply that didn't look up
+  new slots, so "book Miso too" right after Biscuit's card still needs its own proposal (`claims_action` and
+  `is_unbacked_claim` in [`assistant/chat.py`](assistant/chat.py), with the phrasings it must and must not catch
+  pinned in `tests/test_agent.py`).
 - **An agent eval suite** ([`agent_cases.json`](assistant/evals/agent_cases.json)): 10 conversations with a throwaway
   client — book, reschedule, cancel, a late cancellation that must mention the fee, an ambiguous pet, a change of
   mind, "list my appointments" (which must not act), and an instruction hidden in a pet's allergies field. Each is
@@ -83,7 +85,9 @@ bad at "next Tuesday") and telling the model to retry once with a looked-up id w
 
 That comparison was a one-off manual script, and the default model later made the "proposal it never made" mistake on
 the public demo. The agent eval suite makes the comparison repeatable:
-`LLM_MODEL=<model> uv run python manage.py run_evals --suite agent --repeat 3 --save`.
+`LLM_MODEL=<model> LLM_PRICE_INPUT_PER_M=<$> LLM_PRICE_OUTPUT_PER_M=<$> uv run python manage.py run_evals --suite agent --repeat 3 --save`.
+Cost comes from those two prices, so set them for the model under test; each run records the model, the prices and
+the token counts, so its cost can be recomputed later.
 
 ## How it works
 
@@ -97,7 +101,8 @@ the public demo. The agent eval suite makes the comparison repeatable:
 - **Writes are proposals.** A write tool only creates a `PendingAction`; the client sees a card and clicks **Confirm**,
   and the change then runs through the clinic's own booking rules (`clinic/services.py`) — ownership checks, opening
   hours, which vet sees which species and does which service, the vet *and* the pet both free, past/completed visits
-  locked, 24-hour late-change fee, row locks so two tabs can't double-act. Proposals expire after 30 minutes and can't
+  locked, a late-change fee as the published policy defines it (24 hours, but Sunday and after-hours requests count
+  from the next opening), row locks so two tabs can't double-act. Proposals expire after 30 minutes and can't
   be replayed.
 - **Bounded tool loop** — at most 6 model rounds and a 90-second deadline per answer, plus the guardrail above.
 - **Streaming** token by token (Server-Sent Events over a plain Django `StreamingHttpResponse`).
@@ -200,6 +205,15 @@ up with real data, traffic or time) found 10 UI bugs and 19 latent risks — amo
 offered, a pet bookable with two vets at once, and the spend cap being bypassable. All were fixed; the code fixes have
 regression tests in `tests/test_qa_fixes.py`, and the UI fixes were re-checked in a second browser pass.
 
+A second round drove the booking flows end to end in the browser with a scripted local model (an OpenAI-compatible
+mock that returns real tool calls), plus a code review for latent risks, each finding checked by a skeptic before it
+counted. Besides the guardrail gap above, it found about 50 smaller issues: a stale "Please confirm" card after the Back
+button, admin totals multiplied under search, password pages that linked to the hidden admin path, a help-center file
+name that could crash the deploy, the late-change fee not matching the published policy, a closed tab saving a reply
+at $0. The fixes have tests in `tests/test_qa2_*.py`. Left as known limits of the fictional clinic: surgeries can be
+booked at any time of day (the drop-off window isn't modelled), services aren't restricted by species or weight,
+there's no booking horizon, and one container serves 16 streams at a time (2 gunicorn workers × 8 threads).
+
 ## Deploy
 
 ```bash
@@ -215,7 +229,7 @@ GIT_SHA=$(git rev-parse --short HEAD) docker compose -p pawcare -f docker-compos
 
 Postgres + pgvector, the app (gunicorn with threaded workers so streams don't block), and Caddy or `cloudflared` in
 front, started once the app's healthcheck passes. The embedding model is baked into the image; first boot migrates,
-seeds and indexes the help center. Then:
+seeds an empty clinic (`seed_clinic --force` re-syncs it from the code) and indexes the help center. Then:
 
 1. Run the evals once so the dashboard has a score:
    `docker compose -p pawcare -f docker-compose.tunnel.yml exec web python manage.py run_evals --repeat 3`
