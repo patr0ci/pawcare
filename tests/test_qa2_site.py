@@ -94,3 +94,34 @@ def test_cross_references_link_titles_with_ampersands_and_apostrophes(client):
     assert '"<a href="/help/fleas-ticks/">Fleas &amp; Ticks</a>"' in html
     assert '"<a href="/help/whats-covered/">What&#x27;s Covered</a>"' in html
     assert "<li>Not a title: &quot;Cats &amp; &lt;b&gt;Dogs&lt;/b&gt;&quot;</li>" in html
+
+
+@pytest.mark.django_db
+def test_seed_on_boot_keeps_admin_edits_and_force_resyncs(clinic):
+    from decimal import Decimal
+
+    from django.core.management import call_command
+
+    from clinic.models import Service, Vet
+
+    Service.objects.filter(name="Nail trim").update(price_usd=Decimal("22.00"), duration_minutes=20)
+    Vet.objects.filter(name="Dr. Maya Chen").update(name="Dr. Maya Chen-Park")
+    call_command("seed_clinic")  # what every boot runs
+    nail_trim = Service.objects.get(name="Nail trim")
+    assert (nail_trim.price_usd, nail_trim.duration_minutes) == (Decimal("22.00"), 20)
+    assert Vet.objects.count() == 3 and not Vet.objects.filter(name="Dr. Maya Chen").exists()
+
+    call_command("seed_clinic", force=True)
+    assert Service.objects.get(name="Nail trim").price_usd == Decimal("20.00")
+    assert Vet.objects.filter(name="Dr. Maya Chen").exists()
+
+
+@pytest.mark.django_db
+def test_seed_fills_an_empty_clinic():
+    from django.core.management import call_command
+
+    from clinic.models import Service, Vet
+
+    call_command("seed_clinic")
+    assert Vet.objects.count() == 3 and Service.objects.count() == 7
+    assert Vet.objects.get(name="Dr. Rafael Souza").services.filter(name="Dental cleaning").exists()
