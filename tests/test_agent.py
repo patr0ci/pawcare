@@ -307,3 +307,33 @@ def test_each_round_sends_only_its_own_text_back(tutor, monkeypatch):
     list(answer(Conversation.objects.create(user=tutor.user), "pets?"))
     assistant_turns = [m["content"] for m in llm.seen_messages[-1] if m["role"] == "assistant" and m.get("tool_calls")]
     assert assistant_turns == ["Step 2.", "\n\nStep 1."]
+
+
+@pytest.mark.django_db
+def test_unknown_action_kind_is_never_executed_as_a_cancellation(tutor):
+    from assistant.tools import execute
+
+    biscuit = tutor.pets.get(name="Biscuit")
+    appointment = Appointment.objects.create(pet=biscuit, vet=Vet.objects.first(), service=Service.objects.first(),
+                                             starts_at=timezone.now() + timedelta(days=3))
+    action = PendingAction.objects.create(conversation=Conversation.objects.create(user=tutor.user), kind="refund",
+                                          payload={"appointment_id": appointment.id}, summary="x")
+    with pytest.raises(ValueError, match="Unknown action kind"):
+        execute(action)
+    appointment.refresh_from_db()
+    assert appointment.status == Appointment.Status.SCHEDULED
+
+
+def test_missing_api_key_fails_loudly_in_production(settings):
+    from django.core.exceptions import ImproperlyConfigured
+
+    from assistant.llm import FakeLLM, get_llm
+
+    settings.LLM_PROVIDER, settings.LLM_API_KEY = "openai_compatible", ""
+    settings.DEBUG = False
+    get_llm.cache_clear()
+    with pytest.raises(ImproperlyConfigured):
+        get_llm()
+    settings.DEBUG = True  # local development keeps working offline
+    get_llm.cache_clear()
+    assert isinstance(get_llm(), FakeLLM)

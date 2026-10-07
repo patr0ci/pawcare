@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 
 from django.conf import settings
+from django.core.exceptions import ImproperlyConfigured
 
 
 @dataclass
@@ -106,6 +107,11 @@ class FakeLLM:
 
 @lru_cache(maxsize=1)
 def get_llm():
-    if settings.LLM_PROVIDER == "fake" or not settings.LLM_API_KEY:
+    if settings.LLM_PROVIDER == "fake":
         return FakeLLM()
+    if not settings.LLM_API_KEY:
+        if not settings.DEBUG:
+            # In production a missing key would quietly serve canned answers that look like a broken assistant.
+            raise ImproperlyConfigured("Set LLM_API_KEY, or LLM_PROVIDER=fake to run without a model.")
+        return FakeLLM()  # local development without a key
     return OpenAICompatibleLLM(settings.LLM_BASE_URL, settings.LLM_API_KEY, settings.LLM_MODEL)

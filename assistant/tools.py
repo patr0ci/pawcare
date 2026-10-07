@@ -246,5 +246,8 @@ def execute(action: PendingAction) -> str:
     if action.kind == PendingAction.Kind.RESCHEDULE:
         a = services.reschedule(tutor, p["appointment_id"], parse_time(p["starts_at"]))
         return f"Moved: {a.pet.name}'s {a.service.name} is now on {fmt(a.starts_at)}."
-    a = services.cancel(tutor, p["appointment_id"], p.get("reason", ""))
-    return f"Cancelled: {a.pet.name}'s {a.service.name} on {fmt(a.starts_at)}."
+    if action.kind == PendingAction.Kind.CANCEL:
+        a = services.cancel(tutor, p["appointment_id"], p.get("reason", ""))
+        return f"Cancelled: {a.pet.name}'s {a.service.name} on {fmt(a.starts_at)}."
+    # A destructive write is never the fallback for an action kind this code doesn't know.
+    raise ValueError(f"Unknown action kind: {action.kind}")
