@@ -53,6 +53,7 @@ button { font: inherit; cursor: pointer; }
 .chat-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; }
 .chat-header h1 { font-size: 1.6rem; margin-bottom: 0; }
 .chat-header p { margin-top: .2rem; }
+.chat-header > .link { white-space: nowrap; }
 .log { flex: 1; display: flex; flex-direction: column; gap: .8rem; padding: 1rem 0; overflow-y: auto; min-height: 45vh; }
 .bubble { max-width: 85%; padding: .75rem 1rem; border-radius: var(--radius); border: 1px solid var(--line); }
 .bubble.user { align-self: flex-end; background: var(--user); }
@@ -73,9 +74,10 @@ button { font: inherit; cursor: pointer; }
 @keyframes blink { 50% { opacity: 0; } }
 .status { font-size: .82rem; color: var(--muted); font-style: italic; }
 .status:empty { display: none; }
-.action { margin-top: .7rem; border: 1px solid var(--accent); border-radius: 12px; padding: .7rem .9rem; background: var(--accent-soft); }
+.action { max-width: 85%; align-self: flex-start; border: 1px solid var(--accent); border-radius: 12px; padding: .7rem .9rem; background: var(--accent-soft); }
 .action-title { font-weight: 600; font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; color: var(--accent); }
 .action-summary { margin: .25rem 0 .6rem; }
+.action-note { margin: -.2rem 0 .6rem; }
 .action-buttons { display: flex; gap: 1rem; align-items: center; }
 .action-buttons .link { min-height: 44px; padding: 0 .5rem; }
 .action.dismissed, .action.failed { border-color: var(--line); background: transparent; }
