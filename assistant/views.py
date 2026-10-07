@@ -21,8 +21,6 @@ from .chat import answer
 from .models import Conversation, EvalRun, Message, PendingAction
 from .tools import execute
 
-ACTION_TTL = timedelta(minutes=30)
-
 MAX_QUESTION_CHARS = 1000
 logger = logging.getLogger(__name__)
 
@@ -115,7 +113,7 @@ def _log_outcome(action: PendingAction):
 def confirm_action(request, action_id):
     with transaction.atomic():
         action = _lock_pending_action(request, action_id)
-        if timezone.now() - action.created_at > ACTION_TTL:
+        if timezone.now() - action.created_at > PendingAction.TTL:
             action.status, action.result = PendingAction.Status.FAILED, "That proposal expired. Please ask again."
         else:
             try:
@@ -204,22 +202,21 @@ def dashboard(request):
 
 
 def health(request):
-    """For uptime monitors and the container healthcheck. 503 when the app can't work at all; a spent daily
-    budget is reported (assistant_available: false) without failing the check, so Docker doesn't flag it."""
+    """For uptime monitors and the container healthcheck. 503 only when the database is down: a missing model key
+    or a spent daily budget shows up as assistant_available: false, which a monitor can alert on, without the
+    healthcheck taking the rest of the site (help center, booking pages) offline."""
     llm_configured = settings.LLM_PROVIDER == "fake" or bool(settings.LLM_API_KEY)
     try:
         budget_left = settings.ASSISTANT_DAILY_BUDGET_USD - Message.objects.spent_today_usd()
         database = True
     except DatabaseError:
         budget_left, database = 0.0, False
-    ok = database and llm_configured
     return JsonResponse(
         {
-            "ok": ok,
+            "ok": database,
             "database": database,
             "llm_configured": llm_configured,
-            "assistant_available": ok and budget_left > 0,
-            "budget_left_usd": round(max(budget_left, 0), 4),
+            "assistant_available": database and llm_configured and budget_left > 0,
         },
-        status=200 if ok else 503,
+        status=200 if database else 503,
     )

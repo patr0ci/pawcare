@@ -134,6 +134,111 @@ def test_claimed_proposal_without_tool_call_gets_one_corrective_round(tutor, scr
 
 
 @pytest.mark.django_db
+def test_a_claim_after_tool_calls_is_checked_before_the_client_sees_it(tutor, script):
+    biscuit = tutor.pets.get(name="Biscuit")
+    exam = Service.objects.get(name="Wellness exam")
+    day = next_weekday(1)
+    vet, start = morning_slot(biscuit, exam, day)
+    script(
+        [("find_available_slots", {"pet_id": biscuit.id, "service_id": exam.id, "date": day.isoformat()})],
+        "I’ve set up a proposal for 9:00 AM. Please click **Confirm** to lock it in.",  # no tool call behind it
+        [
+            (
+                "propose_booking",
+                {
+                    "pet_id": biscuit.id,
+                    "service_id": exam.id,
+                    "vet_id": vet.id,
+                    "starts_at": timezone.localtime(start).isoformat(),
+                },
+            )
+        ],
+        "Here it is: please click Confirm.",
+    )
+    conversation = Conversation.objects.create(user=tutor.user)
+    events = list(answer(conversation, "Book a wellness exam for Biscuit next Tuesday morning"))
+    shown = "".join(e["text"] for e in events if e["type"] == "delta")
+    assert shown == "Here it is: please click Confirm."
+    assert conversation.messages.last().content == shown
+    assert len([e for e in events if e["type"] == "action"]) == 1
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "I've set up a proposal for 9:00 AM. Please confirm the proposal to lock it in.",
+        "I’ve booked Biscuit's wellness exam for Tuesday.",
+        "I've gone ahead and scheduled it for Tuesday at 9:00.",
+        "I have now cancelled Miso's vaccination visit.",
+        "I've set it up for 9:30. Please confirm.",
+        "Your proposal is ready. Please review it.",
+        "Done! Click “Confirm” below.",
+        "Please click **Confirm** to lock it in.",
+        "Agendei o exame do Biscuit para terça às 9h. Por favor, confirme.",
+        "Clique no botão Confirmar para finalizar.",
+    ],
+)
+def test_claims_that_need_a_proposal_behind_them(text):
+    assert chat.claims_action(text)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Biscuit's wellness exam is booked for Tue Oct 13 at 9:00 AM.",  # a fact from list_my_appointments
+        "Which pet is it for, Biscuit or Miso? Once you tell me, I'll set up a proposal for you to confirm.",
+        "Free times: 9:00 and 9:30. Pick one and I'll create a proposal; then just click Confirm.",
+        "I've prepared the available times for Tuesday: 9:00, 9:30 and 10:00.",
+        "Your proposal was confirmed, so the exam is on Tuesday.",
+        "If you'd like, I can book it for 9:30 instead.",
+        "Please confirm which pet you mean.",
+        "Se quiser, posso agendar para terça às 9h.",
+    ],
+)
+def test_promises_questions_and_facts_are_not_claims(text):
+    assert not chat.claims_action(text)
+
+
+@pytest.mark.django_db
+def test_a_stale_proposal_does_not_excuse_a_new_claim(tutor, script):
+    conversation = Conversation.objects.create(user=tutor.user)
+    script("Biscuit has a wellness exam on Tuesday.")
+    list(answer(conversation, "what's booked?"))
+    stale = PendingAction.objects.create(conversation=conversation, kind="book", payload={}, summary="x")
+    PendingAction.objects.filter(id=stale.id).update(created_at=timezone.now() - timedelta(hours=2))
+    llm = script("I've booked Miso's nail trim for Thursday.", "Which day works for Miso?")
+    list(answer(conversation, "book Miso a nail trim"))
+    assert len(llm.seen_messages) == 2  # corrected, despite the old card still being "pending"
+
+
+@pytest.mark.django_db
+def test_no_correction_when_too_few_rounds_are_left(tutor, script):
+    llm = script(*([[("list_my_pets", {})]] * (chat.MAX_TOOL_ROUNDS - 2)), "I've booked it for you.")
+    events = list(answer(Conversation.objects.create(user=tutor.user), "book"))
+    assert len(llm.seen_messages) == chat.MAX_TOOL_ROUNDS - 1 and events[-1]["type"] == "done"
+
+
+@pytest.mark.django_db
+def test_running_out_of_rounds_after_a_proposal_points_to_the_card(tutor, script):
+    biscuit = tutor.pets.get(name="Biscuit")
+    exam = Service.objects.get(name="Wellness exam")
+    vet, start = morning_slot(biscuit, exam, next_weekday(1))
+    propose = (
+        "propose_booking",
+        {
+            "pet_id": biscuit.id,
+            "service_id": exam.id,
+            "vet_id": vet.id,
+            "starts_at": timezone.localtime(start).isoformat(),
+        },
+    )
+    script(*([[("list_my_pets", {})]] * (chat.MAX_TOOL_ROUNDS - 1)), [propose])
+    events = list(answer(Conversation.objects.create(user=tutor.user), "book"))
+    text = "".join(e["text"] for e in events if e["type"] == "delta")
+    assert "click Confirm" in text and "too many steps" not in text
+
+
+@pytest.mark.django_db
 def test_unbacked_claim_is_corrected_only_once(tutor, script):
     llm = script("I've booked it for you.", "Sorry, I have booked it.")  # a third round would raise in ScriptedLLM
     events = list(answer(Conversation.objects.create(user=tutor.user), "book biscuit"))

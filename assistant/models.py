@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from django.conf import settings
 from django.db import models
 from django.db.models import Sum
@@ -70,6 +72,7 @@ class PendingAction(models.Model):
     kind = models.CharField(max_length=12, choices=Kind.choices)
     payload = models.JSONField()
     SUMMARY_MAX = RESULT_MAX = 500
+    TTL = timedelta(minutes=30)  # an older proposal can't be confirmed any more
 
     summary = models.CharField(max_length=SUMMARY_MAX)
     status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING)

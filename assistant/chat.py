@@ -22,19 +22,34 @@ MAX_TOOL_ROUNDS = 6
 ANSWER_DEADLINE_S = 90  # no new LLM round starts after this; each call also has its own timeout
 
 # Seen on the public demo: the model wrote "I've set up a proposal, please confirm" without calling propose_booking,
-# so there was no Confirm button. A reply that claims an action needs a proposal behind it; if there is none,
-# the model gets one corrective round.
-# First-person claims only: "your exam is booked for Tuesday" is a fact when it comes from list_my_appointments.
-CLAIMS_ACTION = re.compile(
-    r"\bproposal\b|\b(?:click|tap|press)\s+(?:the\s+)?confirm\b|\bconfirm button\b"
-    r"|\bi(?:'ve| have)(?:\s+just)?\s+(?:booked|cancell?ed|rescheduled|moved|set up|prepared|proposed)\b"
-    r"|\bproposta\b|\bclique em confirmar\b",  # the assistant answers in the client's language
+# so there was no Confirm button. A reply that claims an action needs a proposal behind it; if there is none, the
+# model gets one corrective round. Claims are first-person "done" or "ready" statements, checked sentence by sentence:
+# "your exam is booked for Tuesday" is a fact from list_my_appointments, and "once you pick a time, I'll set up a
+# proposal" is a promise, not a claim.
+_DONE = r"(?:booked|scheduled|reserved|cancell?ed|rescheduled|moved|arranged)"
+CLAIM = re.compile(
+    rf"\bi(?:'ve| have)(?:\s+\w+){{0,3}}?\s+{_DONE}\b|\bi\s+(?:just\s+)?{_DONE}\b"
+    r"|\bi(?:'ve| have)(?:\s+\w+){0,2}?\s+(?:set\s+(?:it|this|that|everything)\s+up"
+    r"|(?:set up|created|prepared|made|sent)\s+(?:a|the|your|this)\s+(?:\w+\s+)?"
+    r"(?:proposal|booking|reservation|request|cancellation|change))\b"
+    r"|\b(?:proposal|request)\s+(?:is|has been)\s+(?:ready|set up|created|prepared|sent|in place|waiting)\b"
+    r"|\b(?:click|tap|press|hit)\s+(?:on\s+)?(?:the\s+)?confirm\b"
+    r"|\bconfirm\s+(?:the|this|your)\s+(?:proposal|booking|change|cancellation)\b"
+    # the assistant answers in the client's language
+    r"|\b(?:agendei|marquei|remarquei|cancelei|reservei)\b|\b(?:criei|preparei)\s+(?:a|uma)\s+proposta\b"
+    r"|\bproposta\s+(?:est[aá]\s+pronta|foi\s+criada)\b|\b(?:clique|toque|aperte)\s+(?:em\s+|no\s+bot[aã]o\s+)?confirmar\b",
+    re.I,
+)
+NOT_YET = re.compile(
+    r"\b(?:i'll|i will|i can|i could|i'd|once|if|when|after|then|would you|do you want|shall i|should i|want me to)\b"
+    r"|\b(?:vou|posso|quando|se|assim que|depois que|quer que)\b",
     re.I,
 )
 UNBACKED_CLAIM_NUDGE = (
-    "Automatic check (not from the client): your last reply talks about a booking, change or cancellation, but no "
-    "propose_* tool was called, so the client has no Confirm button. If you have what you need, call the right "
-    "propose_* tool now. Otherwise, correct your reply: ask for what's missing, and don't say anything is proposed or done."
+    "Automatic check (not from the client): your last reply says something was booked, changed, cancelled or "
+    "proposed, but no propose_* tool was called in this turn, so the client has no Confirm button. If the client has "
+    "already chosen the pet, the service and the time, call the right propose_* tool now. If not, don't propose "
+    "anything: reply again, ask for what's missing, and don't say anything is proposed or done."
 )
 
 SYSTEM_PROMPT = """You are the virtual assistant of PawCare Veterinary Clinic.
@@ -75,12 +90,28 @@ def cited_numbers(text: str) -> set[int]:
     return {int(n) for group in re.findall(r"\[(\d+(?:\s*,\s*\d+)*)\]", text) for n in re.findall(r"\d+", group)}
 
 
+def claims_action(text: str) -> bool:
+    """True if a sentence says, without an "if"/"once"/"I'll" before it, that something was booked, changed,
+    cancelled or proposed, or tells the client to click Confirm."""
+    text = re.sub(r"[*_\"“”]", "", text.replace("’", "'").replace("‘", "'"))  # **Confirm**, “Confirm”, I’ve
+    for sentence in re.split(r"(?<=[.!?])\s+|\n+", text):
+        match = CLAIM.search(sentence)
+        if match and not NOT_YET.search(sentence[: match.end()]):
+            return True
+    return False
+
+
 def is_unbacked_claim(conversation: Conversation, runner: ToolRunner, text: str) -> bool:
-    """The reply talks about a proposal or a done change, but nothing was proposed this turn and no earlier
-    proposal is still waiting for the client (pointing back at one of those is fine)."""
-    if runner.proposed or not CLAIMS_ACTION.search(text):
+    """The reply claims an action, nothing was proposed in this turn, and the previous turn didn't leave a proposal
+    to talk about (a card still waiting, or one the client just confirmed). Known gap: a claim about a *new* action
+    made right after such a card isn't caught here; the agent eval's change-of-mind case is there for that."""
+    if runner.proposed or not claims_action(text):
         return False
-    return not conversation.actions.filter(status=PendingAction.Status.PENDING).exists()
+    recent = conversation.actions.filter(created_at__gte=timezone.now() - PendingAction.TTL)
+    previous_question = conversation.messages.filter(role=Message.Role.USER).order_by("-created_at")[1:2].first()
+    if previous_question:
+        recent = recent.filter(created_at__gte=previous_question.created_at)
+    return not recent.exists()
 
 
 def upcoming_calendar(days: int = 14) -> str:
@@ -129,6 +160,7 @@ def answer(conversation: Conversation, question: str) -> Iterator[dict]:
     The reply (with usage and the tool trace) is saved even if the provider fails mid-way or the client
     disconnects, so the dashboard counts what was actually spent."""
     started = time.monotonic()
+    llm = get_llm()  # fails before anything is saved if the deploy has no model configured
     sources = retrieve(retrieval_queries(conversation, question))
     messages = build_messages(conversation, question, sources)
     Message.objects.create(conversation=conversation, role=Message.Role.USER, content=question)
@@ -144,29 +176,45 @@ def answer(conversation: Conversation, question: str) -> Iterator[dict]:
                 yield {"type": "delta", "text": parts[-1]}
                 break
             done, round_has_text, round_start = None, False, len(parts)
-            for event in get_llm().stream(messages, tools=TOOLS):
+            # After a tool call, a reply is held back until it's checked for an unbacked claim, so a false
+            # "I've booked it" never reaches the client. Answers that need no tools still stream token by token.
+            held: list[str] | None = [] if trace else None
+            for event in llm.stream(messages, tools=TOOLS):
                 if isinstance(event, Delta):
                     text = event.text
                     if parts and not round_has_text and not parts[-1][-1:].isspace():
                         text = "\n\n" + text.lstrip()  # keep text from separate tool rounds apart
                     round_has_text = True
                     parts.append(text)
-                    yield {"type": "delta", "text": text}
+                    if held is None:
+                        yield {"type": "delta", "text": text}
+                    else:
+                        held.append(text)
                 elif isinstance(event, Done):
                     done = event
             usage = Usage(
                 usage.prompt_tokens + done.usage.prompt_tokens, usage.completion_tokens + done.usage.completion_tokens
             )
             model = done.model
-            if not done.tool_calls:
-                round_text = "".join(parts[round_start:])
-                if nudged or round_no == MAX_TOOL_ROUNDS - 1 or not is_unbacked_claim(conversation, runner, round_text):
-                    break
+            round_text = "".join(parts[round_start:])
+            # The correction needs two more rounds: one to call propose_*, one to say so.
+            if (
+                not done.tool_calls
+                and not nudged
+                and round_no < MAX_TOOL_ROUNDS - 2
+                and is_unbacked_claim(conversation, runner, round_text)
+            ):
                 nudged = True
                 trace.append({"name": "guardrail", "arguments": "{}", "result": {"unbacked_claim": round_text[:300]}})
                 messages.append({"role": "assistant", "content": round_text})
                 messages.append({"role": "user", "content": UNBACKED_CLAIM_NUDGE})
+                if held is not None:
+                    del parts[round_start:]  # the client never saw it
                 continue
+            if held:
+                yield {"type": "delta", "text": "".join(held)}
+            if not done.tool_calls:
+                break
             messages.append(
                 {
                     "role": "assistant",
@@ -186,7 +234,10 @@ def answer(conversation: Conversation, question: str) -> Iterator[dict]:
                 for action in runner.proposed[proposed_before:]:
                     yield {"type": "action", "id": action.id, "kind": action.kind, "summary": action.summary}
         else:
-            parts.append("\n\nSorry, that took too many steps. Could you rephrase or call us at (555) 014-7788?")
+            if runner.proposed:
+                parts.append("\n\nPlease review the proposal and click Confirm if it looks right.")
+            else:
+                parts.append("\n\nSorry, that took too many steps. Could you rephrase or call us at (555) 014-7788?")
             yield {"type": "delta", "text": parts[-1]}
         if not "".join(parts).strip():
             parts.append("Sorry, I couldn't come up with an answer. Could you rephrase that?")
@@ -199,7 +250,7 @@ def answer(conversation: Conversation, question: str) -> Iterator[dict]:
             role=Message.Role.ASSISTANT,
             content=content,
             sources=[asdict(s) | {"text": s.text[:300]} for s in sources if s.number in cited],
-            model=model or getattr(get_llm(), "model", ""),
+            model=model or getattr(llm, "model", ""),
             prompt_tokens=usage.prompt_tokens,
             completion_tokens=usage.completion_tokens,
             cost_usd=usage.cost_usd,
