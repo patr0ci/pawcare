@@ -17,3 +17,62 @@ def test_login_page_sends_a_logged_in_visitor_on(client, tutor):
     response = client.get(reverse("login"))
     assert response.status_code == 302 and response.url == reverse("home")
     assert client.get(reverse("login") + "?next=/help/").url == "/help/"
+
+
+def write_article(directory, name, title="Good", body="Body"):
+    (directory / f"{name}.md").write_text(f"---\ntitle: {title}\ncategory: X\n---\n{body}\n", encoding="utf-8")
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("name", ["x" * 51, "has space", "dotted.name", "café"])
+def test_file_names_that_cant_be_slugs_are_skipped_not_fatal(client, tmp_path, name):
+    from helpcenter.ingest import ingest_directory
+
+    write_article(tmp_path, "good")
+    write_article(tmp_path, name, title="Bad name")
+    stats = ingest_directory(tmp_path)
+    assert (stats["created"], stats["errors"]) == (1, 1)
+    assert client.get("/help/").status_code == 200
+
+
+@pytest.mark.django_db
+def test_an_article_left_with_a_bad_slug_is_removed(client, tmp_path):
+    from helpcenter.ingest import ingest_directory
+    from helpcenter.models import Article
+
+    Article.objects.create(slug="dotted.name", title="Old", category="X", body="Old")  # from an older ingest
+    write_article(tmp_path, "dotted.name")
+    assert ingest_directory(tmp_path)["deleted"] == 1
+    assert client.get("/help/").status_code == 200
+
+
+@pytest.mark.django_db
+def test_a_title_too_long_for_its_column_is_skipped(tmp_path):
+    from helpcenter.ingest import ingest_directory
+
+    write_article(tmp_path, "long-title", title="t" * 201)
+    assert ingest_directory(tmp_path)["errors"] == 1
+
+
+@pytest.mark.django_db
+def test_an_interrupted_update_leaves_the_old_text_and_chunks_together(tmp_path, monkeypatch):
+    import helpcenter.ingest
+    from helpcenter.ingest import ingest_directory
+    from helpcenter.models import Article
+
+    write_article(tmp_path, "fees", body="Late fee is $25.")
+    ingest_directory(tmp_path)
+    write_article(tmp_path, "fees", body="Late fee is $30.")
+
+    def interrupted(article):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(helpcenter.ingest, "index_article", interrupted)
+    with pytest.raises(KeyboardInterrupt):
+        ingest_directory(tmp_path)
+    article = Article.objects.get()
+    assert article.body == "Late fee is $25." and "$25" in article.chunks.get().text
+
+    monkeypatch.undo()
+    assert ingest_directory(tmp_path)["updated"] == 1  # not "unchanged" with the old chunks
+    assert "$30" in Article.objects.get().chunks.get().text
