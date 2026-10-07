@@ -1,5 +1,8 @@
 {% extends "base.html" %}
 {% block title %}{{ article.title }}{% endblock %}
+{% block meta_description %}{{ excerpt }}{% endblock %}
+{% block og_title %}{{ article.title }} · PawCare Help Center{% endblock %}
+{% block og_description %}{{ excerpt }}{% endblock %}
 {% block content %}
 <p class="eyebrow"><a href="{% url 'helpcenter:index' %}">Help center</a> · {{ article.category }}</p>
 <h1>{{ article.title }}</h1>

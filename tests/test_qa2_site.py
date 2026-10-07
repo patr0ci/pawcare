@@ -13,7 +13,7 @@ from django.views.defaults import server_error
 
 import helpcenter.ingest
 from clinic.demo import create_demo_tutor
-from clinic.models import Appointment, Service, Vet
+from clinic.models import Appointment, Service, Tutor, Vet
 from clinic.services import late_change_fee
 from helpcenter.ingest import ingest_directory
 from helpcenter.models import Article
@@ -263,3 +263,37 @@ def test_error_pages_carry_the_site_and_a_way_home(client, rf):
 def test_favicon_ico_points_at_the_svg(client):
     response = client.get("/favicon.ico")
     assert response.status_code == 302 and response.url.endswith("img/favicon.svg")
+
+
+@pytest.mark.django_db
+def test_opening_demo_link_goes_home_and_only_post_creates_an_account(client, clinic):
+    response = client.get(reverse("demo_login"))
+    assert response.status_code == 302 and response.url == reverse("home")
+    assert not Tutor.objects.exists() and "_auth_user_id" not in client.session
+    assert client.post(reverse("demo_login")).status_code == 302 and Tutor.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_help_articles_describe_themselves_in_link_previews(client):
+    body = "We know plans change.\n\n- Free with 24 hours' notice\n- $25 otherwise " + "and more " * 40
+    Article.objects.create(slug="policy", title="Cancellation & No-Show", category="Policies", body=body)
+    html = client.get("/help/policy/").content.decode()
+    assert '<meta property="og:title" content="Cancellation &amp; No-Show · PawCare Help Center">' in html
+    expected = "We know plans change. - Free with 24 hours&#x27; notice - $25 otherwise and more"
+    assert f'<meta name="description" content="{expected}' in html
+    assert f'<meta property="og:description" content="{expected}' in html
+    assert "an AI assistant added to an existing Django app" in client.get("/").content.decode()  # the default
+
+
+@pytest.mark.django_db
+def test_my_pets_after_a_cancellation_says_no_upcoming_appointments(client, tutor):
+    Appointment.objects.create(
+        pet=tutor.pets.first(),
+        vet=Vet.objects.first(),
+        service=Service.objects.first(),
+        starts_at=at(next_weekday(2), 10),
+        status=Appointment.Status.CANCELLED,
+    )
+    client.force_login(tutor.user)
+    html = client.get(reverse("my_pets")).content.decode()
+    assert "No upcoming appointments." in html and reverse("assistant:chat") in html
