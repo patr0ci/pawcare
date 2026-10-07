@@ -1,9 +1,11 @@
 .git
 .venv
-.env
+.env*
+!.env.example
 .cache
 staticfiles
 __pycache__
 .pytest_cache
 .github
 tests
+.playwright-mcp

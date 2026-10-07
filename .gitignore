@@ -1,7 +1,9 @@
-.env
+.env*
+!.env.example
 .venv/
 __pycache__/
 *.pyc
 .cache/
 staticfiles/
 .pytest_cache/
+.playwright-mcp/
