@@ -76,6 +76,7 @@ button { font: inherit; cursor: pointer; }
 .action { margin-top: .7rem; border: 1px solid var(--accent); border-radius: 12px; padding: .7rem .9rem; background: var(--accent-soft); }
 .action-title { font-weight: 600; font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; color: var(--accent); }
 .action-summary { margin: .25rem 0 .6rem; }
+.action-note { margin: -.2rem 0 .6rem; }
 .action-buttons { display: flex; gap: 1rem; align-items: center; }
 .action-buttons .link { min-height: 44px; padding: 0 .5rem; }
 .action.dismissed, .action.failed { border-color: var(--line); background: transparent; }

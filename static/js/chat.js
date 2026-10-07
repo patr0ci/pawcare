@@ -25,12 +25,34 @@ function actionCard(action) {
   card.innerHTML = `<div class="action-title">Please confirm</div><div class="action-summary"></div>
     <div class="action-buttons"><button class="button confirm">Confirm</button><button class="link dismiss">Not now</button></div>`;
   card.querySelector(".action-summary").textContent = action.summary;
+  const buttons = card.querySelectorAll("button");
+  const note = (text) => {
+    const el = document.createElement("div");
+    el.className = "action-note small";
+    el.textContent = text;
+    card.querySelector(".action-summary").after(el);
+  };
   const decide = async (verb) => {
-    card.querySelectorAll("button").forEach((b) => (b.disabled = true));
-    const response = await fetch(`/assistant/actions/${action.id}/${verb}/`, {
-      method: "POST",
-      headers: { "X-CSRFToken": csrf() },
-    });
+    buttons.forEach((b) => (b.disabled = true));
+    card.querySelector(".action-note")?.remove();
+    let response;
+    try {
+      response = await fetch(`/assistant/actions/${action.id}/${verb}/`, {
+        method: "POST",
+        headers: { "X-CSRFToken": csrf() },
+      });
+    } catch {
+      // Still pending as far as we know. A retry is safe: if it did go through, the server says so (409).
+      buttons.forEach((b) => (b.disabled = false));
+      note("Connection lost. Please try again.");
+      return;
+    }
+    if (response.redirected) {
+      // login_required sent the POST on to the login page: the demo account behind this page is gone.
+      card.querySelector(".action-buttons").remove();
+      note("Your session has ended. Reload the page to start a new demo.");
+      return;
+    }
     const data = await response.json().catch(() => ({ message: "Something went wrong." }));
     card.querySelector(".action-buttons").remove();
     card.querySelector(".action-title").textContent = data.status === "confirmed" ? "Done" : "No changes";
@@ -43,7 +65,9 @@ function actionCard(action) {
       link.textContent = "See it in My pets →";
       card.append(link);
     }
-    bubble("assistant", data.message);
+    // 409: settled earlier, from another tab or before Back. Nothing new was said, so no new chat message.
+    if (response.status === 409) note(data.message);
+    else bubble("assistant", data.message);
   };
   card.querySelector(".confirm").addEventListener("click", () => decide("confirm"));
   card.querySelector(".dismiss").addEventListener("click", () => decide("dismiss"));

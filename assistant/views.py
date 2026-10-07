@@ -13,6 +13,7 @@ from django.http import JsonResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.text import Truncator
+from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST
 
 from clinic.services import BookingError
@@ -46,6 +47,7 @@ def timeline(conversation: Conversation) -> list[dict]:
     return sorted(items, key=lambda i: (i["at"], i["kind"] == "action"))
 
 
+@never_cache  # Back from My pets must not show a cached page with a card that was confirmed since
 @login_required
 def chat(request):
     if request.GET.get("new"):
@@ -93,14 +95,21 @@ def send_message(request):
     return response
 
 
-def _lock_pending_action(request, action_id) -> PendingAction:
+def _lock_action(request, action_id) -> PendingAction:
     """Row-locked, so two tabs (or a double click) can't both act on the same proposal. Call inside a transaction."""
-    return get_object_or_404(
-        PendingAction.objects.select_for_update(),
-        id=action_id,
-        conversation__user=request.user,
-        status=PendingAction.Status.PENDING,
-    )
+    return get_object_or_404(PendingAction.objects.select_for_update(), id=action_id, conversation__user=request.user)
+
+
+def _already_settled(action: PendingAction) -> JsonResponse:
+    """A stale page (another tab, or the chat again after Back) clicked a card that was settled earlier. Saying what
+    happened lets the card show the real outcome instead of "No changes" over a booking that was made."""
+    messages = {
+        PendingAction.Status.CONFIRMED: "This proposal was already confirmed.",
+        PendingAction.Status.DISMISSED: "This proposal was already dismissed.",
+    }
+    # failed: the saved reason, e.g. "That proposal expired. Please ask again."
+    message = messages.get(action.status) or action.result or "This proposal can't be confirmed any more."
+    return JsonResponse({"status": action.status, "message": message}, status=409)
 
 
 def _log_outcome(action: PendingAction):
@@ -112,7 +121,9 @@ def _log_outcome(action: PendingAction):
 @require_POST
 def confirm_action(request, action_id):
     with transaction.atomic():
-        action = _lock_pending_action(request, action_id)
+        action = _lock_action(request, action_id)
+        if action.status != PendingAction.Status.PENDING:
+            return _already_settled(action)
         if timezone.now() - action.created_at > PendingAction.TTL:
             action.status, action.result = PendingAction.Status.FAILED, "That proposal expired. Please ask again."
         else:
@@ -136,7 +147,9 @@ def confirm_action(request, action_id):
 @require_POST
 def dismiss_action(request, action_id):
     with transaction.atomic():
-        action = _lock_pending_action(request, action_id)
+        action = _lock_action(request, action_id)
+        if action.status != PendingAction.Status.PENDING:
+            return _already_settled(action)
         action.status, action.result = PendingAction.Status.DISMISSED, "Okay, I didn't change anything."
         action.save(update_fields=["status", "result"])
         _log_outcome(action)
