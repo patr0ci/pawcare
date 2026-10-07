@@ -117,7 +117,10 @@ STATUS_LABELS = {
 
 
 def fmt(dt: datetime) -> str:
-    return timezone.localtime(dt).strftime("%a %b %-d, %-I:%M %p")
+    local = timezone.localtime(dt)
+    # The year only when it isn't this one: in late December, "Tue Jan 5" on a Confirm card is ambiguous.
+    year = f", {local.year}" if local.year != timezone.localdate().year else ""
+    return local.strftime(f"%a %b %-d{year}, %-I:%M %p")
 
 
 def parse_date(value: str) -> date:

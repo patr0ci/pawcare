@@ -11,6 +11,7 @@ from assistant import chat
 from assistant.chat import answer
 from assistant.llm import Delta, Done, ToolCall, Usage
 from assistant.models import Conversation, Message, PendingAction
+from assistant.tools import fmt
 from clinic.models import Appointment, Service, Vet
 from tests.test_agent import ScriptedLLM, morning_slot
 from tests.test_scheduling import next_weekday
@@ -155,3 +156,11 @@ def test_a_reply_that_failed_before_any_text_reads_like_the_live_error(client, t
     reply = Message.objects.get(role="assistant")
     assert events[-1] == {"type": "error", "message": reply.content}
     assert reply.cost_usd == 0  # nothing came back: most likely rejected, so not billed
+
+
+def test_dates_outside_this_year_show_the_year():
+    now = timezone.localtime()
+    next_year = now.replace(year=now.year + 1, month=1, day=5, hour=9, minute=0)
+    assert fmt(next_year) == f"{next_year:%a} Jan 5, {now.year + 1}, 9:00 AM"
+    this_year = now.replace(hour=14, minute=30)
+    assert fmt(this_year) == f"{this_year:%a %b %-d}, 2:30 PM"
