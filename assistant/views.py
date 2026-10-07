@@ -18,7 +18,7 @@ from django.views.decorators.http import require_POST
 
 from clinic.services import BookingError
 
-from .chat import answer
+from .chat import UNAVAILABLE, answer
 from .models import Conversation, EvalRun, Message, PendingAction
 from .tools import execute
 
@@ -92,7 +92,7 @@ def send_message(request):
                 yield f"data: {json.dumps(event)}\n\n"
         except Exception:
             logger.exception("Assistant failed to answer")
-            error = {"type": "error", "message": "The assistant is unavailable right now. Please try again."}
+            error = {"type": "error", "message": UNAVAILABLE}
             try:
                 # The question may have been saved (and counted) before the failure, so the counter needs this too.
                 error["remaining"] = remaining_today(request.user)

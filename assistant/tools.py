@@ -246,7 +246,7 @@ class ToolRunner:
         fee = services.late_change_fee(appointment)
         summary = f"Cancel {appointment.pet.name}'s {appointment.service.name} on {fmt(appointment.starts_at)}"
         if fee:
-            summary += f" (less than 24 h notice: ${fee} fee)"
+            summary += f" (late change: ${fee} fee)"
         return self._propose(PendingAction.Kind.CANCEL, {"appointment_id": appointment.id, "reason": reason}, summary)
 
 

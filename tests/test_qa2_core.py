@@ -155,7 +155,7 @@ def test_a_reply_that_failed_before_any_text_reads_like_the_live_error(client, t
     client.force_login(tutor.user)
     events = read_events(client.post(reverse("assistant:send_message"), {"message": "hi"}))
     reply = Message.objects.get(role="assistant")
-    assert events[-1] == {"type": "error", "message": reply.content}
+    assert events[-1]["type"] == "error" and events[-1]["message"] == reply.content
     assert reply.cost_usd == 0  # nothing came back: most likely rejected, so not billed
 
 

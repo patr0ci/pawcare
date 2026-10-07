@@ -100,8 +100,10 @@ def test_booking_is_only_proposed_until_confirmed(client, tutor, script):
     appointment = Appointment.objects.get()
     assert (appointment.pet, appointment.vet, appointment.starts_at) == (biscuit, vet, start)
 
-    # A confirmed action can't be replayed.
-    assert client.post(reverse("assistant:confirm_action", args=[actions[0]["id"]])).status_code == 404
+    # A confirmed action can't be replayed: a second click is told it's already done, and nothing is booked twice.
+    replay = client.post(reverse("assistant:confirm_action", args=[actions[0]["id"]]))
+    assert replay.status_code == 409 and replay.json()["status"] == "confirmed"
+    assert Appointment.objects.count() == 1
 
 
 @pytest.mark.django_db
