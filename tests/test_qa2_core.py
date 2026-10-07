@@ -1,12 +1,15 @@
 """Regression tests for the second QA round (assistant core: guardrail, tools, interrupted answers, evals)."""
 
+from datetime import timedelta
+
 import pytest
+from django.urls import reverse
 from django.utils import timezone
 
 from assistant import chat
 from assistant.chat import answer
 from assistant.models import Conversation, PendingAction
-from clinic.models import Service
+from clinic.models import Appointment, Service, Vet
 from tests.test_agent import ScriptedLLM, morning_slot
 from tests.test_scheduling import next_weekday
 
@@ -68,3 +71,24 @@ def test_pointing_to_the_waiting_card_needs_no_correction(script, biscuit_card_w
     list(answer(biscuit_card_waiting, "did you book it?"))
     assert len(llm.seen_messages) == 1
     assert [c["name"] for c in biscuit_card_waiting.messages.last().tool_calls] == []
+
+
+@pytest.mark.parametrize("reason", [None, 7, ["moving away"]])
+@pytest.mark.django_db
+def test_cancellation_with_an_odd_reason_can_still_be_confirmed(client, tutor, script, reason):
+    # A null reason used to reach services.cancel as None, so None[:255] made every Confirm fail.
+    appointment = Appointment.objects.create(
+        pet=tutor.pets.get(name="Miso"),
+        vet=Vet.objects.get(name="Dr. Maya Chen"),
+        service=Service.objects.get(name="Vaccination visit"),
+        starts_at=timezone.now() + timedelta(days=5),
+    )
+    script([("propose_cancellation", {"appointment_id": appointment.id, "reason": reason})], "Please confirm.")
+    events = list(answer(Conversation.objects.create(user=tutor.user), "cancel Miso's visit"))
+    action_id = next(e["id"] for e in events if e["type"] == "action")
+
+    client.force_login(tutor.user)
+    assert client.post(reverse("assistant:confirm_action", args=[action_id])).json()["status"] == "confirmed"
+    appointment.refresh_from_db()
+    assert appointment.status == Appointment.Status.CANCELLED
+    assert appointment.cancellation_reason == ("" if reason is None else str(reason))

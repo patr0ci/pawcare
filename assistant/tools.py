@@ -234,6 +234,8 @@ class ToolRunner:
 
     def tool_propose_cancellation(self, appointment_id: int, reason: str = ""):
         appointment = services.own_appointment(self.tutor, appointment_id)
+        # The model sometimes sends null or a number; stored as is, every Confirm of this card would fail.
+        reason = "" if reason is None else str(reason)
         fee = services.late_change_fee(appointment)
         summary = f"Cancel {appointment.pet.name}'s {appointment.service.name} on {fmt(appointment.starts_at)}"
         if fee:
@@ -251,7 +253,8 @@ def execute(action: PendingAction) -> str:
         a = services.reschedule(tutor, p["appointment_id"], parse_time(p["starts_at"]))
         return f"Moved: {a.pet.name}'s {a.service.name} is now on {fmt(a.starts_at)}."
     if action.kind == PendingAction.Kind.CANCEL:
-        a = services.cancel(tutor, p["appointment_id"], p.get("reason", ""))
+        # A card proposed before the reason was normalised may still hold null or a number.
+        a = services.cancel(tutor, p["appointment_id"], str(p.get("reason") or ""))
         return f"Cancelled: {a.pet.name}'s {a.service.name} on {fmt(a.starts_at)}."
     # A destructive write is never the fallback for an action kind this code doesn't know.
     raise ValueError(f"Unknown action kind: {action.kind}")
