@@ -16,9 +16,10 @@ can test, monitor and pay for predictably.
 
 - **About $0.001 per reply** on DeepSeek V4.1 Flash (booking turns cost a little more), with per-visitor and
   site-wide daily caps.
-- **37 eval cases run against the real model**: 27 help-center questions, and 10 booking conversations scored on the
-  proposal the model actually created, not on its wording.
-- **165 offline tests in CI**, including the agent's safety rules: nothing is written before Confirm, and tools can't
+- **37/37 on the eval set, every case passing 3 runs out of 3**, against the live model for $0.06 a run: 27
+  help-center questions, and 10 booking conversations scored on the proposal the model actually created, not on its
+  wording.
+- **166 offline tests in CI**, including the agent's safety rules: nothing is written before Confirm, and tools can't
   reach another client's pets.
 
 ## What it does
@@ -64,9 +65,15 @@ there was no Confirm button. It's the same failure the model comparison below ha
 **Reviewing the grader caught checks that passed for the wrong reason**: the citation marker `[1]` satisfied the
 Saturday-closing fact "1"; a made-up answer that ended with "call the clinic" counted as a refusal; and the limping-dog
 case failed the safe answer "never give ibuprofen". Citation markers are now stripped before matching, bare digits
-became regexes, and only real refusal phrases count. Scores from before this fix aren't comparable with later ones;
-the latest run is on the [dashboard](https://pawcare.patroci.org/assistant/dashboard/) and in
-[`assistant/evals/results/`](assistant/evals/results/).
+became regexes, and only real refusal phrases count. Scores from before this fix aren't comparable with later ones.
+
+**The first run of the new set on the demo scored 33/37**, each case run 3 times. The booking misses were real: asked
+to book or move a visit for a given day, the model listed the free times and asked which one, so no card appeared; and
+asked to neuter Biscuit, it had to ask his weight, because `list_my_pets` didn't return it (spay/neuter is priced under
+or over 20 kg). One prompt line ("propose the earliest matching time and mention the others") and the weight field
+later, **the second run scored 37/37** and the guardrail didn't have to step in once. Both runs are in
+[`assistant/evals/results/`](assistant/evals/results/), with the commit, prompt hash, prices and tokens behind each, and
+the latest is on the [dashboard](https://pawcare.patroci.org/assistant/dashboard/).
 
 ## Choosing the model
 
